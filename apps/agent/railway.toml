@@ -1,0 +1,16 @@
+# Railway configuration for the Fortio Agent service
+# Service root directory (set in Railway dashboard): apps/agent
+# This file is read by Railway relative to that root.
+#
+# IMPORTANT: Disable "Auto Deploy" in Railway dashboard → Service Settings.
+# Deployments are triggered by GitHub Actions (ci-deploy.yml) after tests pass.
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

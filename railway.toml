@@ -1,0 +1,17 @@
+# Railway configuration for the Ghostfolio service
+# This file is read by Railway when deploying from the repo root.
+# Service: ghostfolio
+# Dockerfile: ./Dockerfile (repo root)
+#
+# IMPORTANT: Disable "Auto Deploy" in Railway dashboard → Service Settings.
+# Deployments are triggered by GitHub Actions (ci-deploy.yml) after tests pass.
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/api/v1/health"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

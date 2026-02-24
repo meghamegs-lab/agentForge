@@ -15,6 +15,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Set PYTHONPATH so `from agent.xxx import ...` resolves correctly
+ENV PYTHONPATH=/app
+
 # ── Runtime ─────────────────────────────────────────────────────
 FROM base AS runtime
 
@@ -22,9 +25,9 @@ FROM base AS runtime
 RUN useradd -m -u 1000 appuser
 USER appuser
 
-EXPOSE 8000 8001
+# Railway injects PORT automatically; fall back to 8001 for local runs
+EXPOSE ${PORT:-8001}
 
-# Default: start both Chainlit and FastAPI
-CMD ["sh", "-c", \
-     "chainlit run agent/ui/chainlit_app.py --host 0.0.0.0 --port 8000 & \
-      uvicorn agent.api.main:app --host 0.0.0.0 --port 8001"]
+# Production: FastAPI only (Chainlit is for local dev only)
+# Railway sets $PORT; local dev defaults to 8001
+CMD ["sh", "-c", "uvicorn agent.api.main:app --host 0.0.0.0 --port ${PORT:-8001}"]
