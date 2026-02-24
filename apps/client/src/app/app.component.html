@@ -51,3 +51,8 @@
     <gf-footer class="py-4" [info]="info" [user]="user" />
   </footer>
 }
+
+<!-- Fortio AI Chat Widget — floats over all pages -->
+@if (user) {
+  <gf-ai-chat [fortioApiUrl]="'http://localhost:8001'" />
+}

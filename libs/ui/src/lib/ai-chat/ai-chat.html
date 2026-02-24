@@ -1,0 +1,123 @@
+<!-- ============================================================
+  Fortio AI Chat Widget
+  - Floating button (bottom-right) toggles the chat panel
+  - Chat panel shows conversation history + input
+  ============================================================ -->
+
+<!-- ── Floating Action Button ── -->
+<button
+  class="gf-ai-chat-fab"
+  mat-fab
+  [matTooltip]="isPanelOpen ? 'Close Fortio AI' : 'Ask Fortio AI'"
+  (click)="togglePanel()"
+>
+  @if (isPanelOpen) {
+    <mat-icon>close</mat-icon>
+  } @else {
+    <mat-icon>smart_toy</mat-icon>
+  }
+</button>
+
+<!-- ── Chat Panel ── -->
+@if (isPanelOpen) {
+  <div class="gf-ai-chat-panel">
+
+    <!-- Header -->
+    <div class="gf-ai-chat-header">
+      <div class="gf-ai-chat-header-info">
+        <mat-icon class="header-icon">smart_toy</mat-icon>
+        <div>
+          <div class="header-title">Fortio</div>
+          <div class="header-subtitle">AI Portfolio Assistant</div>
+        </div>
+      </div>
+      <button mat-icon-button (click)="closePanel()">
+        <mat-icon>close</mat-icon>
+      </button>
+    </div>
+
+    <!-- Messages -->
+    <div class="gf-ai-chat-messages">
+      @for (message of messages; track message.timestamp) {
+        <div
+          class="message"
+          [class.message-user]="message.role === 'user'"
+          [class.message-assistant]="message.role === 'assistant'"
+        >
+          <!-- Assistant avatar -->
+          @if (message.role === 'assistant') {
+            <div class="message-avatar">
+              <mat-icon>smart_toy</mat-icon>
+            </div>
+          }
+
+          <div class="message-body">
+            <!-- Message text -->
+            <div class="message-bubble">
+              {{ message.content }}
+            </div>
+
+            <!-- Confidence badge (only on assistant messages) -->
+            @if (message.role === 'assistant' && message.confidence) {
+              <div class="message-meta">
+                <span class="confidence-badge">
+                  {{ confidenceEmoji(message.confidence) }}
+                  Confidence: {{ message.confidence }}
+                </span>
+                @if (message.hasWarning) {
+                  <span class="warning-badge">⚠️ Flags detected</span>
+                }
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Loading indicator while agent is thinking -->
+      @if (isLoading) {
+        <div class="message message-assistant">
+          <div class="message-avatar">
+            <mat-icon>smart_toy</mat-icon>
+          </div>
+          <div class="message-body">
+            <div class="message-bubble loading-bubble">
+              <mat-progress-spinner
+                diameter="18"
+                mode="indeterminate"
+                strokeWidth="2"
+              />
+              <span>Fortio is thinking...</span>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+
+    <!-- Input Area -->
+    <div class="gf-ai-chat-input-area">
+      <textarea
+        class="gf-ai-chat-input"
+        placeholder="Ask about your portfolio..."
+        rows="1"
+        [(ngModel)]="inputText"
+        [disabled]="isLoading"
+        (keydown)="onKeydown($event)"
+      ></textarea>
+      <button
+        class="send-button"
+        mat-icon-button
+        color="primary"
+        [disabled]="!inputText.trim() || isLoading"
+        (click)="onSend()"
+      >
+        <mat-icon>send</mat-icon>
+      </button>
+    </div>
+
+    <!-- Footer disclaimer -->
+    <div class="gf-ai-chat-footer">
+      ⚠️ For educational purposes only — not financial advice.
+    </div>
+
+  </div>
+}

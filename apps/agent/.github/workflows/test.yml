@@ -1,0 +1,47 @@
+name: AgentForge CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths: ['apps/agent/**']
+  pull_request:
+    branches: [main]
+    paths: ['apps/agent/**']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/agent
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Lint with ruff
+        run: ruff check agent/ tests/
+
+      - name: Run unit tests with coverage
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GHOSTFOLIO_BASE_URL: https://ghostfol.io
+          LANGCHAIN_TRACING_V2: false
+        run: |
+          pytest tests/unit/ -v --cov=agent --cov-report=xml --cov-fail-under=85
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        with:
+          file: apps/agent/coverage.xml

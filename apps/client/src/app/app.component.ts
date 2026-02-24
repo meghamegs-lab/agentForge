@@ -40,10 +40,11 @@ import { HoldingDetailDialogParams } from './components/holding-detail-dialog/in
 import { ImpersonationStorageService } from './services/impersonation-storage.service';
 import { TokenStorageService } from './services/token-storage.service';
 import { UserService } from './services/user/user.service';
+import { GfAiChatComponent } from '@ghostfolio/ui/ai-chat';
 
 @Component({
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [GfFooterComponent, GfHeaderComponent, RouterLink, RouterOutlet],
+  imports: [GfFooterComponent, GfHeaderComponent, GfAiChatComponent, RouterLink, RouterOutlet],
   selector: 'gf-root',
   styleUrls: ['./app.component.scss'],
   templateUrl: './app.component.html'
