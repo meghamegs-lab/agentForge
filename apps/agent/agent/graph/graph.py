@@ -1,15 +1,28 @@
 """
 LangGraph agent graph for Fortio, the Ghostfolio Finance Agent.
 Nodes: reasoning → tool_execution → verification → output
+
+Checkpointing:
+  The graph is compiled with an optional checkpointer.
+  When a checkpointer is supplied, LangGraph automatically saves and restores
+  AgentState between turns using `thread_id` from the run config:
+
+      config = {"configurable": {"thread_id": conversation_id}}
+      await graph.ainvoke(state, config=config)
+
+  - FastAPI uses AsyncPostgresSaver (persistent across restarts)
+  - Chainlit uses MemorySaver (in-memory, sufficient for dev sessions)
 """
 from __future__ import annotations
 
 import json
+import structlog
 from typing import Any
 
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import ToolMessage, SystemMessage
+from langchain_core.messages import ToolMessage, SystemMessage, AIMessage
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 
@@ -43,6 +56,7 @@ def _build_llm():
 
 
 _llm = _build_llm()   # ← module-level singleton
+_log = structlog.get_logger()
 
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────
@@ -129,15 +143,52 @@ def should_use_tools(state: AgentState) -> str:
 
 
 def should_escalate(state: AgentState) -> str:
-    """Route to escalation node if high-severity verification flags detected."""
+    """Route to escalation node if high-severity hallucination detected."""
     if state.get("should_escalate"):
         return "escalate"
     return END
 
 
+# ── Nodes (continued) ─────────────────────────────────────────────────────────
+
+async def escalation_node(state: AgentState) -> dict[str, Any]:
+    """
+    Human-in-the-loop escalation handler.
+    Triggered when verification detects a high-severity POTENTIAL_HALLUCINATION.
+    Replaces the agent's response with a safe fallback and logs the incident.
+
+    In production this would: page an on-call engineer, open a support ticket,
+    or route to a human advisor. For now it logs and returns a safe message.
+    """
+    _log.warning(
+        "escalation_triggered",
+        flags=state.get("verification_flags", []),
+        confidence=state.get("confidence"),
+    )
+    safe_response = (
+        "⚠️ I detected a potential issue with the accuracy of my previous response. "
+        "For safety I'm withholding it.\n\n"
+        "Please try rephrasing your question, or consult your Ghostfolio dashboard "
+        "directly for exact figures. If this keeps happening, contact support."
+    )
+    return {
+        "final_response": safe_response,
+        "messages": [AIMessage(content=safe_response)],
+    }
+
+
 # ── Graph Assembly ────────────────────────────────────────────────────────────
 
-def build_graph() -> StateGraph:
+def build_graph(checkpointer=None):
+    """
+    Build and compile the LangGraph agent graph.
+
+    Args:
+        checkpointer: A LangGraph checkpointer (e.g. AsyncPostgresSaver,
+                      MemorySaver). When supplied, conversation state is
+                      automatically persisted between turns using thread_id.
+                      Pass None for a stateless graph (testing only).
+    """
     tool_node = ToolNode(ALL_TOOLS)
 
     graph = StateGraph(AgentState)
@@ -146,6 +197,7 @@ def build_graph() -> StateGraph:
     graph.add_node("tools", tool_node)
     graph.add_node("collect_results", tool_result_collector_node)
     graph.add_node("verify", verification_node)
+    graph.add_node("escalate", escalation_node)
 
     graph.set_entry_point("reasoning")
 
@@ -155,11 +207,20 @@ def build_graph() -> StateGraph:
         {"tools": "tools", "verify": "verify"},
     )
     graph.add_edge("tools", "collect_results")
-    graph.add_edge("collect_results", "reasoning")  # Loop back for synthesis
-    graph.add_edge("verify", END)
+    graph.add_edge("collect_results", "reasoning")   # loop back for synthesis
 
-    return graph.compile()
+    # After verification: either end cleanly or escalate on hallucination
+    graph.add_conditional_edges(
+        "verify",
+        should_escalate,
+        {"escalate": "escalate", END: END},
+    )
+    graph.add_edge("escalate", END)
+
+    return graph.compile(checkpointer=checkpointer)
 
 
-# Singleton graph instance
-agent_graph = build_graph()
+# ── Default singleton (Chainlit dev UI) ───────────────────────────────────────
+# Uses MemorySaver — persists for the lifetime of the process.
+# FastAPI creates its own graph instance via lifespan with AsyncPostgresSaver.
+agent_graph = build_graph(checkpointer=MemorySaver())

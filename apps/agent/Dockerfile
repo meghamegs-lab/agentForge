@@ -1,33 +1,32 @@
-# ── Build stage ────────────────────────────────────────────────
-FROM python:3.11-slim AS base
+# ── Single-stage production image ──────────────────────────────
+# Python 3.12 matches pyproject.toml requires-python = ">=3.12"
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# System deps for psycopg2 and yfinance
+# System deps:
+#   gcc + libpq-dev  → psycopg2-binary build headers
+#   curl             → Railway health check probing during startup
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps first (cached layer)
+# Install Python deps first — this layer is cached unless requirements.txt changes
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application code (requirements-dev.txt intentionally excluded from prod)
 COPY . .
 
-# Set PYTHONPATH so `from agent.xxx import ...` resolves correctly
+# PYTHONPATH lets `from agent.xxx import ...` resolve correctly from /app
 ENV PYTHONPATH=/app
-
-# ── Runtime ─────────────────────────────────────────────────────
-FROM base AS runtime
 
 # Don't run as root
 RUN useradd -m -u 1000 appuser
 USER appuser
 
-# Railway injects PORT automatically; fall back to 8001 for local runs
+# Railway injects $PORT automatically; fall back to 8001 for local docker runs
 EXPOSE ${PORT:-8001}
 
-# Production: FastAPI only (Chainlit is for local dev only)
-# Railway sets $PORT; local dev defaults to 8001
+# Production entrypoint: FastAPI only (Chainlit is for local dev)
 CMD ["sh", "-c", "uvicorn agent.api.main:app --host 0.0.0.0 --port ${PORT:-8001}"]

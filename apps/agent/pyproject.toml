@@ -10,3 +10,34 @@ requires-python = ">=3.12"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["agent*"]
+
+[tool.coverage.run]
+source = ["agent"]
+# Exclude files that require integration tests (graph, API, UI)
+omit = [
+    "agent/graph/graph.py",
+    "agent/graph/state.py",
+    "agent/api/main.py",
+    "agent/ui/chainlit_app.py",
+    "agent/prompts.py",
+]
+
+[tool.coverage.report]
+# These modules need integration tests — excluded from unit test coverage gate
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]  # line length handled by formatter
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+ignore_missing_imports = true

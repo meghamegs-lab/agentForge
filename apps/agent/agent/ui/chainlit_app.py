@@ -1,21 +1,26 @@
 """
 Chainlit chat UI for Fortio - the Ghostfolio Finance Agent.
 Run with: chainlit run agent/ui/chainlit_app.py
+
+Checkpointing:
+  Uses the module-level `agent_graph` singleton which is compiled with
+  MemorySaver. History persists for the lifetime of the Chainlit server
+  process. Each browser session gets its own `conversation_id` (thread_id),
+  so users are fully isolated from each other.
 """
 import uuid
 import chainlit as cl
 from langchain_core.messages import HumanMessage
 
 from agent.graph.graph import agent_graph
-from agent.graph.state import AgentState
 
 
 @cl.on_chat_start
 async def on_chat_start():
-    """Initialize session with a unique conversation ID."""
+    """Initialize a new session with a unique conversation ID (LangGraph thread_id)."""
     session_id = str(uuid.uuid4())
     cl.user_session.set("conversation_id", session_id)
-    cl.user_session.set("messages", [])
+    # No need to track messages manually — MemorySaver handles it via thread_id.
 
     await cl.Message(
         content=(
@@ -33,21 +38,32 @@ async def on_chat_start():
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    """Handle incoming user message through the agent graph."""
-    conversation_id = cl.user_session.get("conversation_id")
-    messages = cl.user_session.get("messages", [])
+    """
+    Handle incoming user message through the agent graph.
 
-    # Add user message
-    messages.append(HumanMessage(content=message.content))
+    Only the NEW message is passed in state — MemorySaver automatically
+    loads and merges previous messages via thread_id.
+    """
+    conversation_id = cl.user_session.get("conversation_id")
+
+    # LangGraph config: thread_id tells the checkpointer which conversation
+    # history to load and save to.
+    config = {
+        "configurable": {
+            "thread_id": conversation_id,
+            "user_id": "demo_user",
+        }
+    }
 
     # Show thinking indicator
     thinking_msg = cl.Message(content="")
     await thinking_msg.send()
 
     try:
-        # Build initial state
-        state: AgentState = {
-            "messages": messages,
+        # Only pass the NEW message — LangGraph loads history from MemorySaver.
+        # tool_results and verification_flags reset each turn (no reducer).
+        state = {
+            "messages": [HumanMessage(content=message.content)],
             "tool_results": [],
             "verification_flags": [],
             "confidence": "HIGH",
@@ -58,8 +74,8 @@ async def on_message(message: cl.Message):
             "should_escalate": False,
         }
 
-        # Stream through the graph
-        final_state = await agent_graph.ainvoke(state)
+        # Pass config so MemorySaver can load/save state for this thread_id
+        final_state = await agent_graph.ainvoke(state, config=config)
 
         # Get the verified response
         response_text = final_state.get("final_response", "")
@@ -83,15 +99,8 @@ async def on_message(message: cl.Message):
                 footer_parts.append(f"⚠️ {len(high_flags)} high-severity flag(s) detected")
 
         footer = "  \n*" + " | ".join(footer_parts) + "*"
-        full_response = response_text + footer
-
-        # Update thinking message with response
-        thinking_msg.content = full_response
+        thinking_msg.content = response_text + footer
         await thinking_msg.update()
-
-        # Update session message history
-        messages = list(final_state["messages"])
-        cl.user_session.set("messages", messages)
 
     except Exception as e:
         thinking_msg.content = (

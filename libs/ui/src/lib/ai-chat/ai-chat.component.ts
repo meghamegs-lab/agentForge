@@ -28,19 +28,29 @@ import { of } from 'rxjs';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export interface AiChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-  confidence?: 'HIGH' | 'MEDIUM' | 'LOW';   // Only on assistant messages
-  hasWarning?: boolean;                        // True if any HIGH/MEDIUM flags
-  timestamp: Date;
+export interface ToolCallInfo {
+  tool_name: string;
+  status: string;         // "ok" | "error" | "empty"
+  error?: string | null;
 }
 
 interface FortioApiResponse {
   answer: string;
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
   flags: Array<{ type: string; severity: string; message: string }>;
+  tool_calls: ToolCallInfo[];
   conversation_id: string;
+}
+
+export interface AiChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  confidence?: 'HIGH' | 'MEDIUM' | 'LOW';   // Only on assistant messages
+  hasWarning?: boolean;                        // True if any HIGH/MEDIUM flags
+  timestamp: Date;
+  // Full structured response — shown in the debug panel
+  rawResponse?: FortioApiResponse;
+  showRaw?: boolean;                           // Toggle state for debug panel
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -148,6 +158,7 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
               '⚠️ Could not reach the Fortio agent. Make sure it is running on port 8001.',
             confidence: 'LOW' as const,
             flags: [],
+            tool_calls: [],
             conversation_id: this.conversationId
           });
         })
@@ -161,13 +172,15 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
           (f) => f.severity === 'HIGH' || f.severity === 'MEDIUM'
         );
 
-        // Add Fortio's answer to the chat
+        // Add Fortio's answer to the chat (with full structured response stored)
         this.messages.push({
           role: 'assistant',
           content: response.answer,
           confidence: response.confidence,
           hasWarning,
-          timestamp: new Date()
+          timestamp: new Date(),
+          rawResponse: response,
+          showRaw: false
         });
 
         this.isLoading = false;
@@ -198,6 +211,19 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
       LOW: '🔴'
     };
     return map[confidence] ?? '🟡';
+  }
+
+  /** Toggle the raw structured debug panel for a specific message */
+  public toggleRaw(message: AiChatMessage): void {
+    message.showRaw = !message.showRaw;
+    this.changeDetectorRef.markForCheck();
+  }
+
+  /** Pretty-print the structured response for the debug panel */
+  public formatRaw(response: FortioApiResponse): string {
+    // Show the structured data without the full answer text to keep it compact
+    const { answer: _answer, ...structured } = response;
+    return JSON.stringify(structured, null, 2);
   }
 
   /** Scroll the message list to the bottom after a new message arrives */

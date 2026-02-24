@@ -12,26 +12,17 @@ from langchain_core.tools import tool
 from agent.clients.ghostfolio import GhostfolioError, get_shared_client
 
 
-@tool
-async def get_transactions(
+# ── Implementation (importable in unit tests without @tool overhead) ──────────
+
+async def _get_transactions(
     account_id: str = "",
     date_from: str = "",
     date_to: str = "",
     transaction_type: str = "",
 ) -> dict[str, Any]:
     """
-    Retrieve transaction history including buys, sells, dividends, and fees.
-    Use this when users ask about their trading history, past transactions,
-    fees paid, dividends received, or want to analyze their trading patterns.
-
-    Args:
-        account_id: Optional account ID filter. Leave empty for all accounts.
-        date_from: Optional start date filter in ISO format (e.g. '2024-01-01').
-        date_to: Optional end date filter in ISO format (e.g. '2024-12-31').
-        transaction_type: Optional type filter: 'BUY', 'SELL', 'DIVIDEND', 'FEE', 'INTEREST'.
-
-    Returns:
-        Dictionary with transactions list, fee summary, and type breakdown.
+    Core logic for get_transactions.
+    Separated from the @tool wrapper so unit tests can call it directly.
     """
     try:
         client = get_shared_client()
@@ -59,7 +50,6 @@ async def get_transactions(
                 if a.get("type", "").upper() == transaction_type.upper()
             ]
 
-        # Process and categorize
         transactions = []
         total_fees = 0.0
         type_counts: dict[str, int] = {}
@@ -90,7 +80,7 @@ async def get_transactions(
                 "account": activity.get("Account", {}).get("name", ""),
             })
 
-        # Sort by date descending
+        # Sort by date descending (newest first)
         transactions.sort(key=lambda x: x["date"], reverse=True)
 
         return {
@@ -111,3 +101,29 @@ async def get_transactions(
         return {"status": "error", "error": e.message, "error_code": e.status_code}
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+# ── LangChain Tool (used by the graph) ────────────────────────────────────────
+
+@tool
+async def get_transactions(
+    account_id: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    transaction_type: str = "",
+) -> dict[str, Any]:
+    """
+    Retrieve transaction history including buys, sells, dividends, and fees.
+    Use this when users ask about their trading history, past transactions,
+    fees paid, dividends received, or want to analyze their trading patterns.
+
+    Args:
+        account_id: Optional account ID filter. Leave empty for all accounts.
+        date_from: Optional start date filter in ISO format (e.g. '2024-01-01').
+        date_to: Optional end date filter in ISO format (e.g. '2024-12-31').
+        transaction_type: Optional type filter: 'BUY', 'SELL', 'DIVIDEND', 'FEE', 'INTEREST'.
+
+    Returns:
+        Dictionary with transactions list, fee summary, and type breakdown.
+    """
+    return await _get_transactions(account_id, date_from, date_to, transaction_type)

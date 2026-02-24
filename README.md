@@ -2,9 +2,9 @@
 
 [<img src="https://avatars.githubusercontent.com/u/82473144?s=200" width="100" alt="Ghostfolio logo">](https://ghostfol.io)
 
-# Ghostfolio
+# Ghostfolio + Fortio
 
-**Open Source Wealth Management Software**
+**Open Source Wealth Management Software · AI Finance Agent**
 
 [**Ghostfol.io**](https://ghostfol.io) | [**Live Demo**](https://ghostfol.io/en/demo) | [**Ghostfolio Premium**](https://ghostfol.io/en/pricing) | [**FAQ**](https://ghostfol.io/en/faq) |
 [**Blog**](https://ghostfol.io/en/blog) | [**LinkedIn**](https://www.linkedin.com/company/ghostfolio) | [**Slack**](https://join.slack.com/t/ghostfolio/shared_invite/zt-vsaan64h-F_I0fEo5M0P88lP9ibCxFg) | [**X**](https://x.com/ghostfolio_)
@@ -12,6 +12,16 @@
 [![Shield: Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-Support-yellow?logo=buymeacoffee)](https://www.buymeacoffee.com/ghostfolio)
 [![Shield: Contributions Welcome](https://img.shields.io/badge/Contributions-Welcome-limegreen.svg)](#contributing) [![Shield: Docker Pulls](https://img.shields.io/docker/pulls/ghostfolio/ghostfolio?label=Docker%20Pulls)](https://hub.docker.com/r/ghostfolio/ghostfolio)
 [![Shield: License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-orange.svg)](https://www.gnu.org/licenses/agpl-3.0)
+
+---
+
+### 🚀 Production Deployments (Railway)
+
+| Service | URL |
+|---|---|
+| **Ghostfolio App** | [ghostfolio-production.up.railway.app](https://ghostfolio-production.up.railway.app) |
+| **Fortio Agent API** | [fortio-agent-production.up.railway.app](https://fortio-agent-production.up.railway.app) |
+| **Fortio Agent Docs** | [fortio-agent-production.up.railway.app/docs](https://fortio-agent-production.up.railway.app/docs) |
 
 </div>
 
@@ -22,6 +32,61 @@
 [<img src="./apps/client/src/assets/images/video-preview.jpg" width="600" alt="Preview image of the Ghostfolio video trailer">](https://www.youtube.com/watch?v=yY6ObSQVJZk)
 
 </div>
+
+## Fortio — AI Finance Agent
+
+**Fortio** is an AI-powered portfolio assistant built on top of Ghostfolio, added to this fork. It uses [LangGraph](https://github.com/langchain-ai/langgraph) + Claude Sonnet as a stateful agent that reads your Ghostfolio portfolio data and answers natural-language questions about it.
+
+### What Fortio Adds
+
+| Layer | Details |
+|---|---|
+| **Agent** | LangGraph `StateGraph` + Claude Sonnet (primary) + GPT-4o (fallback) |
+| **Tools** | 11 domain tools — 5 core (portfolio, performance, transactions, diversification, market) + 6 advanced (fee drag, health scorecard, rebalancing plan, market context, transaction patterns, proactive risk monitor) |
+| **Verification** | 5-stage pipeline: disclaimer injection · hallucination guard · data freshness · concentration risk · confidence scoring |
+| **API** | FastAPI REST endpoint (`POST /api/chat`) with multi-turn conversation history via Postgres checkpointing |
+| **UI** | Chainlit chat interface (dev/demo) + embedded Angular chat widget in Ghostfolio |
+| **Observability** | LangSmith tracing |
+| **Deployment** | Railway (CI/CD via GitHub Actions) |
+
+### Agent Architecture
+
+```
+reasoning → tools → collect_results → reasoning (loop) → verify → END
+```
+
+State is persisted per `conversation_id` in Postgres using LangGraph's `AsyncPostgresSaver`, so the LLM sees the full conversation history on every turn.
+
+### Eval Suite
+
+The agent ships with a comprehensive evaluation suite under [`apps/agent/tests/eval/`](./apps/agent/tests/eval/):
+
+| Eval file | What it tests |
+|---|---|
+| [`test_correctness.py`](./apps/agent/tests/eval/test_correctness.py) | 12 tests — arithmetic accuracy, percentage conversions, sort order, currency handling, sector rollup |
+| [`test_tool_selection.py`](./apps/agent/tests/eval/test_tool_selection.py) | 10 tests — tool docstring coverage, domain boundary isolation, parameter mapping |
+| [`test_edge_cases.py`](./apps/agent/tests/eval/test_edge_cases.py) | 10 tests — dict vs list holdings format, zero-value holdings, missing fields, unicode names, large portfolios, invalid inputs |
+
+Run the evals:
+```bash
+cd apps/agent
+pytest tests/eval/ -v
+```
+
+### Fortio Quick Start
+
+See [`apps/agent/README.md`](./apps/agent/README.md) for the full setup guide. In brief:
+
+```bash
+cd apps/agent
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+cp .env.example .env   # fill in ANTHROPIC_API_KEY + GHOSTFOLIO_ACCESS_TOKEN
+chainlit run agent/ui/chainlit_app.py   # Chainlit UI → http://localhost:8000
+uvicorn agent.api.main:app --port 8001  # FastAPI docs → http://localhost:8001/docs
+```
+
+---
 
 ## Ghostfolio Premium
 
@@ -173,6 +238,8 @@ Ghostfolio is available for various home server systems, including [CasaOS](http
 ## Development
 
 For detailed information on the environment setup and development process, please refer to [DEVELOPMENT.md](./DEVELOPMENT.md).
+
+For the **Fortio Agent** (Python service), see [`apps/agent/README.md`](./apps/agent/README.md) and [`apps/agent/SETUP.md`](./apps/agent/SETUP.md). Deployment to Railway is documented in [RAILWAY.md](./RAILWAY.md).
 
 ## Public API
 

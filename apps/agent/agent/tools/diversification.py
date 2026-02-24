@@ -13,17 +13,12 @@ from agent.clients.ghostfolio import GhostfolioError, get_shared_client
 from agent.config import settings
 
 
-@tool
-async def analyze_diversification() -> dict[str, Any]:
-    """
-    Analyze portfolio diversification across sectors, geographies, and asset classes.
-    Automatically flags concentration risk when any single position exceeds the
-    threshold (default 20%). Use this when users ask about diversification,
-    concentration risk, sector exposure, geographic allocation, or rebalancing needs.
+# ── Implementation (importable in unit tests without @tool overhead) ──────────
 
-    Returns:
-        Dictionary with sector breakdown, geographic breakdown, asset class breakdown,
-        risk flags, and a diversification score.
+async def _analyze_diversification() -> dict[str, Any]:
+    """
+    Core logic for analyze_diversification.
+    Separated from the @tool wrapper so unit tests can call it directly.
     """
     try:
         client = get_shared_client()
@@ -31,7 +26,7 @@ async def analyze_diversification() -> dict[str, Any]:
 
         raw = data.get("holdings", [])
 
-        # Ghostfolio returns holdings as a list of objects
+        # Ghostfolio can return holdings as either a list or a dict keyed by symbol
         if isinstance(raw, dict):
             holdings_list = list(raw.values())
         else:
@@ -44,15 +39,14 @@ async def analyze_diversification() -> dict[str, Any]:
                 "data_timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-        # Aggregate totals
-        total_value = sum(
-            h.get("valueInBaseCurrency", h.get("value", 0)) or 0
-            for h in holdings_list
-        )
+        total_value = sum(h.get("value", 0) or 0 for h in holdings_list)
         if total_value == 0:
-            return {"status": "empty", "message": "Portfolio has no value."}
+            return {
+                "status": "empty",
+                "message": "Portfolio has no value.",
+                "data_timestamp": datetime.now(timezone.utc).isoformat(),
+            }
 
-        # Sector breakdown
         sectors: dict[str, float] = {}
         countries: dict[str, float] = {}
         asset_classes: dict[str, float] = {}
@@ -60,8 +54,8 @@ async def analyze_diversification() -> dict[str, Any]:
 
         for holding in holdings_list:
             symbol = holding.get("symbol", "UNKNOWN")
-            value = holding.get("valueInBaseCurrency", holding.get("value", 0)) or 0
-            allocation = value / total_value if total_value > 0 else 0
+            value = holding.get("value", 0) or 0
+            allocation = value / total_value
 
             # Flag individual concentration
             if allocation >= settings.portfolio_concentration_threshold:
@@ -70,7 +64,10 @@ async def analyze_diversification() -> dict[str, Any]:
                     "name": holding.get("name", symbol),
                     "allocation_percent": round(allocation * 100, 2),
                     "severity": "HIGH" if allocation >= 0.35 else "MEDIUM",
-                    "message": f"{symbol} represents {round(allocation*100,1)}% of portfolio — consider diversifying",
+                    "message": (
+                        f"{symbol} represents {round(allocation * 100, 1)}% of portfolio "
+                        "— consider diversifying"
+                    ),
                 })
 
             # Aggregate sectors
@@ -86,7 +83,7 @@ async def analyze_diversification() -> dict[str, Any]:
                 countries[country_name] = countries.get(country_name, 0) + (value * country_weight)
 
             # Aggregate asset classes
-            asset_class = holding.get("assetClass", "EQUITY") or "EQUITY"
+            asset_class = holding.get("assetClass", "EQUITY")
             asset_classes[asset_class] = asset_classes.get(asset_class, 0) + value
 
         def to_pct_list(d: dict[str, float]) -> list[dict]:
@@ -96,21 +93,21 @@ async def analyze_diversification() -> dict[str, Any]:
             ]
             return sorted(items, key=lambda x: x["percent"], reverse=True)
 
-        # Diversification score (0-100): penalize concentration
+        # Diversification score (0-100): penalise concentration and few positions
         max_position_pct = max(
-            (h.get("valueInBaseCurrency", h.get("value", 0)) or 0) / total_value * 100
+            (h.get("value", 0) or 0) / total_value * 100
             for h in holdings_list
         )
         num_positions = len(holdings_list)
         score = max(0, min(100, int(
             100
-            - max(0, max_position_pct - 10) * 2      # penalize >10% positions
-            - max(0, 10 - num_positions) * 3          # penalize fewer than 10 positions
+            - max(0, max_position_pct - 10) * 2     # penalise >10% positions
+            - max(0, 10 - num_positions) * 3          # penalise fewer than 10 positions
         )))
 
         return {
             "status": "ok",
-            "total_positions": len(holdings_list),
+            "total_positions": num_positions,
             "total_value": round(total_value, 2),
             "diversification_score": score,
             "diversification_grade": (
@@ -134,3 +131,20 @@ async def analyze_diversification() -> dict[str, Any]:
         return {"status": "error", "error": e.message}
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+# ── LangChain Tool (used by the graph) ────────────────────────────────────────
+
+@tool
+async def analyze_diversification() -> dict[str, Any]:
+    """
+    Analyze portfolio diversification across sectors, geographies, and asset classes.
+    Automatically flags concentration risk when any single position exceeds the
+    threshold (default 20%). Use this when users ask about diversification,
+    concentration risk, sector exposure, geographic allocation, or rebalancing needs.
+
+    Returns:
+        Dictionary with sector breakdown, geographic breakdown, asset class breakdown,
+        risk flags, and a diversification score.
+    """
+    return await _analyze_diversification()

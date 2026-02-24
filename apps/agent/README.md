@@ -3,13 +3,21 @@
 A production-ready AI agent built on LangGraph that provides intelligent portfolio analysis
 by integrating with [Ghostfolio](https://ghostfol.io), the open-source wealth management platform.
 
+## Production URLs
+
+| Service | URL |
+|---|---|
+| **Ghostfolio App** | [ghostfolio-production.up.railway.app](https://ghostfolio-production.up.railway.app) |
+| **Fortio Agent API** | [fortio-agent-production.up.railway.app](https://fortio-agent-production.up.railway.app) |
+| **Fortio Agent Docs** | [fortio-agent-production.up.railway.app/docs](https://fortio-agent-production.up.railway.app/docs) |
+
 ## Stack
 - **Agent:** LangGraph (state machine) + Claude Sonnet (primary LLM) + GPT-4o (fallback)
-- **Tools:** 5 domain tools hitting Ghostfolio REST API + Yahoo Finance
+- **Tools:** 11 domain tools — 5 core (Ghostfolio REST API) + 6 advanced multi-step
 - **Verification:** 5-stage pipeline (disclaimer, hallucination guard, freshness, concentration, confidence)
-- **UI:** Chainlit (dev/demo) + FastAPI (production)
+- **UI:** Chainlit (dev/demo) + FastAPI REST API (production, deployed)
 - **Observability:** LangSmith
-- **Deployment:** Railway
+- **Deployment:** Railway (CI/CD via GitHub Actions)
 
 ---
 
@@ -57,7 +65,8 @@ chainlit run agent/ui/chainlit_app.py
 
 ### 6. Run tests
 ```bash
-pytest tests/unit/ -v
+pytest tests/unit/ -v       # unit tests (mocked, no network)
+pytest tests/eval/ -v       # eval suite (correctness, tool selection, edge cases)
 ```
 
 ---
@@ -151,7 +160,7 @@ The larger context window matters when you're passing full portfolio data (can b
 
 ---
 
-## Running the Full Docker Stack (Friday submission)
+## Running the Full Docker Stack
 ```bash
 # From monorepo root
 docker compose -f docker/docker-compose.yml up -d
@@ -169,12 +178,21 @@ apps/agent/
 ├── agent/
 │   ├── config.py              # All settings via pydantic-settings
 │   ├── prompts.py             # System prompt
-│   ├── tools/                 # 5 LangGraph tools
+│   ├── tools/                 # 11 LangGraph tools
+│   │   ├── __init__.py        # ALL_TOOLS export
+│   │   │   — Core tools (single Ghostfolio API call) —
 │   │   ├── portfolio.py       # get_portfolio_summary
 │   │   ├── performance.py     # get_performance
 │   │   ├── transactions.py    # get_transactions
 │   │   ├── diversification.py # analyze_diversification
-│   │   └── market.py          # get_market_data
+│   │   ├── market.py          # get_market_data
+│   │   │   — Advanced multi-step tools —
+│   │   ├── fee_drag.py        # get_fee_drag_analysis
+│   │   ├── health_scorecard.py# get_portfolio_health_scorecard
+│   │   ├── rebalancing.py     # get_rebalancing_plan
+│   │   ├── market_context.py  # get_market_context_overlay
+│   │   ├── transaction_patterns.py # get_transaction_pattern_intelligence
+│   │   └── proactive_monitor.py    # get_proactive_risk_monitor
 │   ├── verification/
 │   │   └── __init__.py        # All 5 verifiers + pipeline
 │   ├── graph/
@@ -183,21 +201,45 @@ apps/agent/
 │   ├── clients/
 │   │   ├── ghostfolio.py      # Typed async API client
 │   │   └── market.py          # yfinance client
-│   ├── api/                   # FastAPI (coming Friday)
+│   ├── api/
+│   │   ├── main.py            # FastAPI app + /health + /api/chat
+│   │   └── schemas.py         # Request/response Pydantic models
 │   └── ui/
 │       └── chainlit_app.py    # Chat interface
 ├── tests/
 │   ├── conftest.py
 │   ├── unit/
-│   │   ├── tools/             # Tool unit tests (mocked)
+│   │   ├── tools/             # Tool unit tests (mocked with respx)
 │   │   └── verification/      # Verifier unit tests
+│   ├── eval/
+│   │   ├── test_correctness.py   # 12 arithmetic/structure accuracy tests
+│   │   ├── test_tool_selection.py# 10 docstring coverage + domain boundary tests
+│   │   └── test_edge_cases.py    # 10 edge case / resilience tests
 │   ├── integration/
-│   ├── adversarial/
-│   └── eval/
-├── .cursor/rules/agentforge.mdc
+│   └── adversarial/
+├── Dockerfile
+├── railway.toml
 ├── .env.example
 ├── requirements.txt
+├── requirements-dev.txt
 └── pytest.ini
+```
+
+---
+
+## Eval Suite
+
+The agent ships with 32 evaluation tests (zero real network calls — all mocked with `respx`):
+
+| File | Focus | Tests |
+|---|---|---|
+| [`tests/eval/test_correctness.py`](./tests/eval/test_correctness.py) | Arithmetic accuracy, percentage conversions, sort order, fee sums, sector rollup | 12 |
+| [`tests/eval/test_tool_selection.py`](./tests/eval/test_tool_selection.py) | Tool docstring trigger coverage, domain boundary isolation, parameter mapping | 10 |
+| [`tests/eval/test_edge_cases.py`](./tests/eval/test_edge_cases.py) | Dict vs list holdings format, zero-value holdings, missing fields, unicode names, large portfolios, invalid inputs | 10 |
+
+```bash
+pytest tests/eval/ -v               # run all evals
+pytest tests/eval/test_correctness.py -v   # run one file
 ```
 
 ---

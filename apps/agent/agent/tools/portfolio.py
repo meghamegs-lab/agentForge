@@ -12,19 +12,12 @@ from langchain_core.tools import tool
 from agent.clients.ghostfolio import GhostfolioError, get_shared_client
 
 
-@tool
-async def get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
+# ── Implementation (importable in unit tests without @tool overhead) ──────────
+
+async def _get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
     """
-    Retrieve a summary of the user's investment portfolio including all holdings,
-    their current values, allocation percentages, and total portfolio value.
-    Use this tool when the user asks about their portfolio composition, what they own,
-    their current positions, or their overall portfolio value.
-
-    Args:
-        account_id: Optional account ID to filter by specific account. Leave empty for all accounts.
-
-    Returns:
-        Dictionary with holdings list, total value, currency, and data timestamp.
+    Core logic for get_portfolio_summary.
+    Separated from the @tool wrapper so unit tests can call it directly.
     """
     try:
         client = get_shared_client()
@@ -32,7 +25,7 @@ async def get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
 
         raw = data.get("holdings", [])
 
-        # Ghostfolio returns holdings as a list of objects
+        # Ghostfolio can return holdings as either a list or a dict keyed by symbol
         if isinstance(raw, dict):
             holdings_list = list(raw.values())
         else:
@@ -99,3 +92,22 @@ async def get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
             "error": str(e),
             "holdings": [],
         }
+
+
+# ── LangChain Tool (used by the graph) ────────────────────────────────────────
+
+@tool
+async def get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
+    """
+    Retrieve a summary of the user's investment portfolio including all holdings,
+    their current values, allocation percentages, and total portfolio value.
+    Use this tool when the user asks about their portfolio composition, what they own,
+    their current positions, or their overall portfolio value.
+
+    Args:
+        account_id: Optional account ID to filter by specific account. Leave empty for all accounts.
+
+    Returns:
+        Dictionary with holdings list, total value, currency, and data timestamp.
+    """
+    return await _get_portfolio_summary(account_id)

@@ -12,20 +12,12 @@ from langchain_core.tools import tool
 from agent.clients.ghostfolio import GhostfolioError, get_shared_client
 
 
-@tool
-async def get_performance(date_range: str = "ytd") -> dict[str, Any]:
+# ── Implementation (importable in unit tests without @tool overhead) ──────────
+
+async def _get_performance(date_range: str = "ytd") -> dict[str, Any]:
     """
-    Get portfolio performance metrics including return on average investment (ROAI),
-    absolute gains/losses, and percentage changes across time periods.
-    Use this when users ask about returns, performance, gains, losses, or how well
-    their portfolio has done over any time period.
-
-    Args:
-        date_range: Time period for performance. Options: '1d', 'wtd', 'mtd',
-                    'ytd', '1y', '5y', 'max'. Defaults to 'ytd'.
-
-    Returns:
-        Dictionary with performance metrics, absolute and relative changes.
+    Core logic for get_performance.
+    Separated from the @tool wrapper so unit tests can call it directly.
     """
     valid_ranges = {"1d", "wtd", "mtd", "ytd", "1y", "5y", "max"}
     if date_range not in valid_ranges:
@@ -37,7 +29,6 @@ async def get_performance(date_range: str = "ytd") -> dict[str, Any]:
 
         perf = data.get("performance", {})
 
-        # Ghostfolio returns nested performance objects
         # Extract all available periods
         periods = {}
         for period_key in ["1d", "wtd", "mtd", "ytd", "1y", "5y", "max"]:
@@ -70,3 +61,23 @@ async def get_performance(date_range: str = "ytd") -> dict[str, Any]:
         return {"status": "error", "error": e.message, "error_code": e.status_code}
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+# ── LangChain Tool (used by the graph) ────────────────────────────────────────
+
+@tool
+async def get_performance(date_range: str = "ytd") -> dict[str, Any]:
+    """
+    Get portfolio performance metrics including return on average investment (ROAI),
+    absolute gains/losses, and percentage changes across time periods.
+    Use this when users ask about returns, performance, gains, losses, or how well
+    their portfolio has done over any time period.
+
+    Args:
+        date_range: Time period for performance. Options: '1d', 'wtd', 'mtd',
+                    'ytd', '1y', '5y', 'max'. Defaults to 'ytd'.
+
+    Returns:
+        Dictionary with performance metrics, absolute and relative changes.
+    """
+    return await _get_performance(date_range)

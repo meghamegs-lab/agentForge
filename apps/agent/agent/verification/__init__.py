@@ -8,8 +8,9 @@ Pipeline runs in order: disclaimer → hallucination → freshness → concentra
 """
 from __future__ import annotations
 
+import json
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from agent.config import settings
@@ -70,7 +71,6 @@ def _extract_numbers(text: str) -> set[str]:
 
 def _extract_numbers_from_tool_results(tool_results: list[dict]) -> set[str]:
     """Flatten all numeric values from tool result dicts."""
-    import json
     text = json.dumps(tool_results)
     return _extract_numbers(text)
 

@@ -1,13 +1,18 @@
 """
 Unit tests for all 5 agent tools.
 All HTTP calls are mocked with respx — no real network requests.
+
+Imports the private _impl functions (not the @tool wrappers) so tests
+run the business logic directly without LangChain overhead.
 """
+from __future__ import annotations
+
 import pytest
 import respx
 import httpx
-import json
 from unittest.mock import patch, MagicMock
 
+from agent.config import settings
 from agent.tools.portfolio import _get_portfolio_summary
 from agent.tools.performance import _get_performance
 from agent.tools.transactions import _get_transactions
@@ -15,20 +20,26 @@ from agent.tools.diversification import _analyze_diversification
 from agent.tools.market import get_market_data
 
 
-# ── Auth mock helper ───────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 AUTH_RESPONSE = {"authToken": "test-bearer-token-123"}
-BASE_URL = "https://ghostfol.io"
+BASE_URL = settings.ghostfolio_base_url.rstrip("/")  # reads from .env / settings
+
+
+def mock_auth(base_url: str = BASE_URL) -> None:
+    """Register the auth endpoint mock (call inside @respx.mock blocks)."""
+    respx.post(f"{base_url}/api/v1/auth/anonymous").mock(
+        return_value=httpx.Response(200, json=AUTH_RESPONSE)
+    )
 
 
 # ── Tool 1: Portfolio Summary ──────────────────────────────────────────────────
 
 class TestGetPortfolioSummary:
+
     @respx.mock
     async def test_returns_holdings_with_allocation_percentages(self, sample_holdings_response):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
             return_value=httpx.Response(200, json=sample_holdings_response)
         )
@@ -40,9 +51,7 @@ class TestGetPortfolioSummary:
 
     @respx.mock
     async def test_total_value_matches_sum_of_positions(self, sample_holdings_response):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
             return_value=httpx.Response(200, json=sample_holdings_response)
         )
@@ -52,11 +61,9 @@ class TestGetPortfolioSummary:
 
     @respx.mock
     async def test_empty_portfolio_returns_empty_state_not_error(self):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
-            return_value=httpx.Response(200, json={"holdings": {}})
+            return_value=httpx.Response(200, json={"holdings": []})
         )
         result = await _get_portfolio_summary()
         assert result["status"] == "empty"
@@ -65,9 +72,7 @@ class TestGetPortfolioSummary:
 
     @respx.mock
     async def test_network_error_returns_structured_error(self):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
             return_value=httpx.Response(500, text="Internal Server Error")
         )
@@ -77,9 +82,7 @@ class TestGetPortfolioSummary:
 
     @respx.mock
     async def test_holdings_sorted_by_value_descending(self, sample_holdings_response):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
             return_value=httpx.Response(200, json=sample_holdings_response)
         )
@@ -89,9 +92,7 @@ class TestGetPortfolioSummary:
 
     @respx.mock
     async def test_data_timestamp_present(self, sample_holdings_response):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
             return_value=httpx.Response(200, json=sample_holdings_response)
         )
@@ -102,11 +103,10 @@ class TestGetPortfolioSummary:
 # ── Tool 2: Performance ────────────────────────────────────────────────────────
 
 class TestGetPerformance:
+
     @respx.mock
     async def test_returns_ytd_performance_fields(self, sample_performance_response):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
             return_value=httpx.Response(200, json=sample_performance_response)
         )
@@ -119,21 +119,17 @@ class TestGetPerformance:
 
     @respx.mock
     async def test_relative_change_is_percentage(self, sample_performance_response):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
             return_value=httpx.Response(200, json=sample_performance_response)
         )
         result = await _get_performance("ytd")
-        # 0.1234 → 12.34%
+        # 0.1234 raw → 12.34%
         assert abs(result["performance"]["relative_change_pct"] - 12.34) < 0.01
 
     @respx.mock
     async def test_invalid_range_falls_back_to_ytd(self, sample_performance_response):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
             return_value=httpx.Response(200, json=sample_performance_response)
         )
@@ -145,11 +141,10 @@ class TestGetPerformance:
 # ── Tool 3: Transactions ───────────────────────────────────────────────────────
 
 class TestGetTransactions:
+
     @respx.mock
     async def test_returns_typed_transactions(self, sample_orders_response):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/order").mock(
             return_value=httpx.Response(200, json=sample_orders_response)
         )
@@ -162,9 +157,7 @@ class TestGetTransactions:
 
     @respx.mock
     async def test_fee_sum_is_correct(self, sample_orders_response):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/order").mock(
             return_value=httpx.Response(200, json=sample_orders_response)
         )
@@ -173,9 +166,7 @@ class TestGetTransactions:
 
     @respx.mock
     async def test_type_filter_works(self, sample_orders_response):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/order").mock(
             return_value=httpx.Response(200, json=sample_orders_response)
         )
@@ -184,9 +175,7 @@ class TestGetTransactions:
 
     @respx.mock
     async def test_empty_transactions_handled(self):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/order").mock(
             return_value=httpx.Response(200, json={"activities": []})
         )
@@ -198,11 +187,10 @@ class TestGetTransactions:
 # ── Tool 4: Diversification ────────────────────────────────────────────────────
 
 class TestAnalyzeDiversification:
+
     @respx.mock
     async def test_sector_weights_sum_to_100(self, sample_holdings_response):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
             return_value=httpx.Response(200, json=sample_holdings_response)
         )
@@ -212,25 +200,34 @@ class TestAnalyzeDiversification:
 
     @respx.mock
     async def test_flags_concentration_above_threshold(self):
+        # Holdings as a LIST — matching real Ghostfolio API format
         concentrated = {
-            "holdings": {
-                "BIG": {
-                    "name": "Big Stock", "quantity": 100, "value": 8000.0,
-                    "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
+            "holdings": [
+                {
+                    "symbol": "BIG",
+                    "name": "Big Stock",
+                    "quantity": 100,
+                    "value": 8000.0,
+                    "currency": "USD",
+                    "assetClass": "EQUITY",
+                    "assetSubClass": "STOCK",
                     "sectors": [{"name": "Technology", "weight": 1.0}],
                     "countries": [{"name": "United States", "weight": 1.0}],
                 },
-                "SMALL": {
-                    "name": "Small Stock", "quantity": 10, "value": 2000.0,
-                    "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
+                {
+                    "symbol": "SMALL",
+                    "name": "Small Stock",
+                    "quantity": 10,
+                    "value": 2000.0,
+                    "currency": "USD",
+                    "assetClass": "EQUITY",
+                    "assetSubClass": "STOCK",
                     "sectors": [{"name": "Healthcare", "weight": 1.0}],
                     "countries": [{"name": "United States", "weight": 1.0}],
                 },
-            }
+            ]
         }
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
             return_value=httpx.Response(200, json=concentrated)
         )
@@ -240,9 +237,7 @@ class TestAnalyzeDiversification:
 
     @respx.mock
     async def test_diversification_score_between_0_and_100(self, sample_holdings_response):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
             return_value=httpx.Response(200, json=sample_holdings_response)
         )
@@ -251,9 +246,7 @@ class TestAnalyzeDiversification:
 
     @respx.mock
     async def test_grade_assigned(self, sample_holdings_response):
-        respx.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
-            return_value=httpx.Response(200, json=AUTH_RESPONSE)
-        )
+        mock_auth()
         respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
             return_value=httpx.Response(200, json=sample_holdings_response)
         )
@@ -264,6 +257,7 @@ class TestAnalyzeDiversification:
 # ── Tool 5: Market Data ────────────────────────────────────────────────────────
 
 class TestGetMarketData:
+
     def test_returns_price_for_valid_symbol(self):
         mock_ticker = MagicMock()
         mock_ticker.fast_info.currency = "USD"

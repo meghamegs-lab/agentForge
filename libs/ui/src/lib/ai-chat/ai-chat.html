@@ -57,7 +57,7 @@
               {{ message.content }}
             </div>
 
-            <!-- Confidence badge (only on assistant messages) -->
+            <!-- Confidence badge + debug toggle (only on assistant messages) -->
             @if (message.role === 'assistant' && message.confidence) {
               <div class="message-meta">
                 <span class="confidence-badge">
@@ -67,6 +67,40 @@
                 @if (message.hasWarning) {
                   <span class="warning-badge">⚠️ Flags detected</span>
                 }
+                @if (message.rawResponse) {
+                  <button
+                    class="raw-toggle-btn"
+                    (click)="toggleRaw(message)"
+                    [title]="message.showRaw ? 'Hide structured output' : 'Show structured output'"
+                  >
+                    <span class="raw-toggle-icon">{{ '{' }} {{ '}' }}</span>
+                    {{ message.showRaw ? 'Hide' : 'Debug' }}
+                  </button>
+                }
+              </div>
+            }
+
+            <!-- Structured debug panel (collapsed by default) -->
+            @if (message.showRaw && message.rawResponse) {
+              <div class="raw-panel">
+                <div class="raw-panel-header">
+                  <span class="raw-panel-title">🔧 Structured Agent Response</span>
+                  <div class="raw-panel-tools">
+                    @for (tool of message.rawResponse.tool_calls; track tool.tool_name) {
+                      <span
+                        class="tool-chip"
+                        [class.tool-chip-ok]="tool.status === 'ok'"
+                        [class.tool-chip-error]="tool.status === 'error'"
+                      >
+                        {{ tool.status === 'ok' ? '✅' : '❌' }} {{ tool.tool_name }}
+                      </span>
+                    }
+                    @if (message.rawResponse.tool_calls.length === 0) {
+                      <span class="tool-chip tool-chip-none">💬 LLM answered directly (no tools)</span>
+                    }
+                  </div>
+                </div>
+                <pre class="raw-panel-json">{{ formatRaw(message.rawResponse) }}</pre>
               </div>
             }
           </div>
