@@ -47,6 +47,8 @@ export class InfoService {
     const info: Partial<InfoItem> = {};
     let isReadOnlyMode: boolean;
 
+    info.fortioApiUrl = this.configurationService.get('FORTIO_API_URL');
+
     const globalPermissions: string[] = [];
 
     if (this.configurationService.get('ENABLE_FEATURE_AUTH_GOOGLE')) {

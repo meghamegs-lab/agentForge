@@ -54,5 +54,5 @@
 
 <!-- Fortio AI Chat Widget — floats over all pages -->
 @if (user) {
-  <gf-ai-chat [fortioApiUrl]="'http://localhost:8001'" />
+  <gf-ai-chat [fortioApiUrl]="info?.fortioApiUrl || 'http://localhost:8001'" />
 }

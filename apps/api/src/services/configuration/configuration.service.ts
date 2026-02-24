@@ -40,6 +40,7 @@ export class ConfigurationService {
       DATA_SOURCES_GHOSTFOLIO_DATA_PROVIDER: json({
         default: []
       }),
+      FORTIO_API_URL: str({ default: 'http://localhost:8001' }),
       ENABLE_FEATURE_AUTH_GOOGLE: bool({ default: false }),
       ENABLE_FEATURE_AUTH_OIDC: bool({ default: false }),
       ENABLE_FEATURE_AUTH_TOKEN: bool({ default: true }),
