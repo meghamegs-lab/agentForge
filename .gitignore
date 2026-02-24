@@ -1,44 +1,113 @@
-# See http://help.github.com/ignore-files/ for more about ignoring files.
+# =============================================================================
+# AgentForge Monorepo – Root .gitignore
+# Nx | Angular | NestJS | Python | Docker
+# =============================================================================
 
-# compiled output
-/out-tsc
-/tmp
+# -----------------------------------------------------------------------------
+# macOS – prevents folder structure & metadata from leaking into git
+# -----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+**/.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+Icon?
 
-# dependencies
-/node_modules
-npm-debug.log
+# -----------------------------------------------------------------------------
+# Auto-generated / temp files
+# -----------------------------------------------------------------------------
+# Cursor AI plan files (auto-generated, never commit)
+*.plan.md
+# PDF / binary assets in root (add explicitly with git add -f if intentional)
+*.pdf
 
-# IDEs and editors
-/.idea
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-*.sublime-workspace
-
-# IDE - VSCode
-.vscode/*
-!.vscode/extensions.json
-!.vscode/launch.json
-!.vscode/settings.json
-
-# misc
-/.angular/cache
-.cursor/rules/nx-rules.mdc
+# -----------------------------------------------------------------------------
+# Environment & Secrets
+# -----------------------------------------------------------------------------
 .env
-.env.prod
-.github/instructions/nx.instructions.md
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# -----------------------------------------------------------------------------
+# Node / npm / yarn / pnpm
+# -----------------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp
+.pnp.js
+
+# -----------------------------------------------------------------------------
+# Nx Build Cache & Artifacts
+# -----------------------------------------------------------------------------
+dist/
 .nx/cache
 .nx/workspace-data
-/.sass-cache
-/connect.lock
-/coverage
-/dist
-/libpeerconnection.log
-testem.log
-/typings
+tmp/
+out-tsc/
 
-# System Files
-.DS_Store
-Thumbs.db
+# -----------------------------------------------------------------------------
+# Angular
+# -----------------------------------------------------------------------------
+.angular/cache
+
+# -----------------------------------------------------------------------------
+# NestJS / TypeScript
+# -----------------------------------------------------------------------------
+build/
+*.js.map
+*.d.ts.map
+
+# -----------------------------------------------------------------------------
+# Prisma
+# -----------------------------------------------------------------------------
+prisma/migrations/
+
+# -----------------------------------------------------------------------------
+# Python (Agent Service)
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# -----------------------------------------------------------------------------
+# Docker
+# -----------------------------------------------------------------------------
+docker-compose.override.yml
+docker-compose.local.yml
+
+# -----------------------------------------------------------------------------
+# Logs & Runtime Data
+# -----------------------------------------------------------------------------
+*.log
+logs/
+*.db
+*.db-journal
+
+# -----------------------------------------------------------------------------
+# IDE & Editors
+# -----------------------------------------------------------------------------
+.idea/
+*.iml
+.vscode/
+*.sublime-workspace
+*.swp
+*.swo
+*~
