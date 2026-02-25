@@ -60,21 +60,39 @@ log = structlog.get_logger()
 async def lifespan(app: FastAPI):
     """
     FastAPI lifespan handler.
-    - Opens an AsyncPostgresSaver connection pool at startup.
+    - Tries to open an AsyncPostgresSaver connection pool at startup.
+    - If Postgres is unavailable (wrong creds, network issue), falls back to
+      MemorySaver so the app still starts and /health responds successfully.
     - Runs `saver.setup()` to create the checkpoints table if it doesn't exist.
     - Builds the agent graph with the checkpointer wired in.
     - Stores the graph on app.state so route handlers can access it.
     - Cleans up the connection pool on shutdown.
     """
+    saver_ctx = None
+
     if settings.checkpoint_backend == "postgres" and settings.database_url:
         log.info("checkpointer_startup", backend="postgres")
-        async with AsyncPostgresSaver.from_conn_string(settings.database_url) as saver:
+        try:
+            # Manually manage the async context manager so we can fall back
+            # to MemorySaver if the Postgres connection fails — instead of
+            # crashing the entire app and blocking the health check endpoint.
+            saver_ctx = AsyncPostgresSaver.from_conn_string(settings.database_url)
+            saver = await saver_ctx.__aenter__()
             # Creates the langgraph_checkpoints table if it doesn't exist yet.
             # Safe to call on every startup — it's idempotent.
             await saver.setup()
             app.state.agent_graph = build_graph(checkpointer=saver)
             log.info("checkpointer_ready", backend="postgres")
-            yield
+        except Exception as exc:
+            # Postgres is unreachable or credentials are wrong.
+            # Fall back to in-memory checkpointing so the service stays healthy.
+            log.error(
+                "checkpointer_postgres_failed",
+                error=str(exc),
+                fallback="memory",
+            )
+            saver_ctx = None
+            app.state.agent_graph = build_graph(checkpointer=MemorySaver())
     else:
         # Fallback: in-memory checkpointing (history lost on restart)
         log.warning(
@@ -83,7 +101,16 @@ async def lifespan(app: FastAPI):
             backend="memory",
         )
         app.state.agent_graph = build_graph(checkpointer=MemorySaver())
-        yield
+
+    try:
+        yield  # App is running — /health and /api/chat are now served
+    finally:
+        # Cleanly close the Postgres connection pool on shutdown
+        if saver_ctx is not None:
+            try:
+                await saver_ctx.__aexit__(None, None, None)
+            except Exception as exc:
+                log.warning("checkpointer_cleanup_error", error=str(exc))
 
 
 # ── App Setup ─────────────────────────────────────────────────────────────────
