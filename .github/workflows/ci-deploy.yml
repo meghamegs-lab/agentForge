@@ -138,11 +138,11 @@ jobs:
           # Full history required for NX affected commands
           fetch-depth: 0
 
-      - name: Set up Node.js 22
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
-          check-latest: true   # always pull the newest Node 22 patch (satisfies >=22.18.0)
+          node-version-file: ".nvmrc"   # single source of truth — keep in sync with Dockerfile
+          check-latest: true            # always pull the newest patch of that major (satisfies >=22.18.0)
           cache: npm
 
       - name: Install npm dependencies
@@ -198,6 +198,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          check-latest: true
+
       - name: Install Railway CLI
         run: npm install -g @railway/cli@latest
 
@@ -235,6 +241,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          check-latest: true
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli@latest
