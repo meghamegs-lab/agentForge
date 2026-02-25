@@ -142,6 +142,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          check-latest: true   # always pull the newest Node 22 patch (satisfies >=22.18.0)
           cache: npm
 
       - name: Install npm dependencies
