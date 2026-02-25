@@ -105,6 +105,7 @@ $gf-theme-dark: mat.m2-define-dark-theme(
 @include mat.app-background();
 @include mat.table-density(-1);
 
+// Sunset color scheme — primary: burnt orange, secondary: amber
 :root {
   --gf-theme-alpha-hover: 0.04;
   --gf-theme-primary-500: #ff6b35;
