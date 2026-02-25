@@ -1,14 +1,12 @@
 name: CI / Deploy
 
 # ── Triggers ────────────────────────────────────────────────────────────────
-# • Push to `main`        → detect changes → test relevant service → deploy if files changed
-# • Push to `dev-mvp`     → detect changes → test relevant service → no deploy
-# • PR targeting `main`   → detect changes → test relevant service → blocks merge on failure
+# • Push to `main`      → detect changes → test relevant service → deploy if files changed
+# • PR targeting `main` → detect changes → test relevant service → blocks merge on failure
 on:
   push:
     branches:
       - main
-      - dev-mvp
   pull_request:
     branches:
       - main
@@ -148,7 +146,7 @@ jobs:
         run: npm install -g npm@11.8.0
 
       - name: Install npm dependencies
-        run: npm ci
+        run: npm install
 
       - name: Lint — format check
         run: npx nx format:check
