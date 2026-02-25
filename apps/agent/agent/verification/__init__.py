@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from agent.config import settings
-
 
 # ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -127,9 +126,7 @@ def _looks_financial(num_str: str) -> bool:
         # Skip: years (2020-2030), small counts (1-9), common round percentages
         if 2010 <= val <= 2035:
             return False
-        if val < 10 and val == int(val):
-            return False
-        return True
+        return not (val < 10 and val == int(val))
     except ValueError:
         return False
 
@@ -145,7 +142,7 @@ def check_freshness(
     Portfolio data: warn if >60 minutes old.
     """
     flags: list[VerificationFlag] = []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     market_threshold = timedelta(minutes=settings.market_data_freshness_minutes)
     portfolio_threshold = timedelta(minutes=60)
 

@@ -7,18 +7,17 @@ run the business logic directly without LangChain overhead.
 """
 from __future__ import annotations
 
-import pytest
-import respx
+from unittest.mock import MagicMock, patch
+
 import httpx
-from unittest.mock import patch, MagicMock
+import respx
 
 from agent.config import settings
-from agent.tools.portfolio import _get_portfolio_summary
-from agent.tools.performance import _get_performance
-from agent.tools.transactions import _get_transactions
 from agent.tools.diversification import _analyze_diversification
 from agent.tools.market import get_market_data
-
+from agent.tools.performance import _get_performance
+from agent.tools.portfolio import _get_portfolio_summary
+from agent.tools.transactions import _get_transactions
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

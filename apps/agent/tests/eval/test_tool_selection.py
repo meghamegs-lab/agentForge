@@ -20,19 +20,16 @@ All Ghostfolio / yfinance network calls are mocked.
 """
 from __future__ import annotations
 
+import httpx
 import pytest
 import respx
-import httpx
-import inspect
-from unittest.mock import patch, MagicMock
-import pandas as pd
 
 from agent.config import settings
-from agent.tools.portfolio      import get_portfolio_summary, _get_portfolio_summary
-from agent.tools.performance    import get_performance,      _get_performance
-from agent.tools.transactions   import get_transactions,     _get_transactions
-from agent.tools.diversification import analyze_diversification, _analyze_diversification
-from agent.tools.market         import get_market_data
+from agent.tools.diversification import analyze_diversification
+from agent.tools.market import get_market_data
+from agent.tools.performance import _get_performance, get_performance
+from agent.tools.portfolio import _get_portfolio_summary, get_portfolio_summary
+from agent.tools.transactions import _get_transactions, get_transactions
 
 BASE_URL  = settings.ghostfolio_base_url.rstrip("/")
 AUTH_RESP = {"authToken": "select-token-xyz"}

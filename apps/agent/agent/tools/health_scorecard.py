@@ -5,7 +5,7 @@ Standout: First tool to produce a graded scorecard with specific named action it
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.tools import tool
@@ -45,7 +45,7 @@ async def _scorecard() -> dict[str, Any]:
             return {
                 "status": "empty",
                 "message": "No holdings found. Add transactions in Ghostfolio first.",
-                "data_timestamp": datetime.now(timezone.utc).isoformat(),
+                "data_timestamp": datetime.now(UTC).isoformat(),
             }
 
         # ── Compute metrics ────────────────────────────────────────
@@ -194,7 +194,7 @@ async def _scorecard() -> dict[str, Any]:
             },
             "risk_flags": flags,
             "action_items": sorted(actions, key=lambda x: x["priority"]),
-            "data_timestamp": datetime.now(timezone.utc).isoformat(),
+            "data_timestamp": datetime.now(UTC).isoformat(),
         }
 
     except GhostfolioError as e:

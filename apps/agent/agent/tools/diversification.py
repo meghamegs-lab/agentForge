@@ -4,14 +4,13 @@ Computes sector, geography, asset class breakdown and risk flags.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.tools import tool
 
 from agent.clients.ghostfolio import GhostfolioError, get_shared_client
 from agent.config import settings
-
 
 # ── Implementation (importable in unit tests without @tool overhead) ──────────
 
@@ -27,16 +26,13 @@ async def _analyze_diversification() -> dict[str, Any]:
         raw = data.get("holdings", [])
 
         # Ghostfolio can return holdings as either a list or a dict keyed by symbol
-        if isinstance(raw, dict):
-            holdings_list = list(raw.values())
-        else:
-            holdings_list = raw
+        holdings_list = list(raw.values()) if isinstance(raw, dict) else raw
 
         if not holdings_list:
             return {
                 "status": "empty",
                 "message": "No holdings to analyze.",
-                "data_timestamp": datetime.now(timezone.utc).isoformat(),
+                "data_timestamp": datetime.now(UTC).isoformat(),
             }
 
         total_value = sum(h.get("value", 0) or 0 for h in holdings_list)
@@ -44,7 +40,7 @@ async def _analyze_diversification() -> dict[str, Any]:
             return {
                 "status": "empty",
                 "message": "Portfolio has no value.",
-                "data_timestamp": datetime.now(timezone.utc).isoformat(),
+                "data_timestamp": datetime.now(UTC).isoformat(),
             }
 
         sectors: dict[str, float] = {}
@@ -124,7 +120,7 @@ async def _analyze_diversification() -> dict[str, Any]:
                 "highest_concentration": round(max_position_pct, 2),
                 "needs_rebalancing": len(concentration_flags) > 0,
             },
-            "data_timestamp": datetime.now(timezone.utc).isoformat(),
+            "data_timestamp": datetime.now(UTC).isoformat(),
         }
 
     except GhostfolioError as e:

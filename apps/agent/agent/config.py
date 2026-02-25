@@ -5,6 +5,7 @@ All config is loaded from environment variables (or .env file).
 Access the singleton:  from agent.config import settings
 """
 from __future__ import annotations
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 

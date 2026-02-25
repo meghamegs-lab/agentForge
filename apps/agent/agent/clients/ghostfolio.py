@@ -11,8 +11,9 @@ across every tool invocation in the same process, saving one auth round-trip
 """
 from __future__ import annotations
 
-import httpx
 from typing import Any
+
+import httpx
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 from agent.config import settings
@@ -137,7 +138,7 @@ class GhostfolioClient:
     async def close(self) -> None:
         await self._client.aclose()
 
-    async def __aenter__(self) -> "GhostfolioClient":
+    async def __aenter__(self) -> GhostfolioClient:
         return self
 
     async def __aexit__(self, *args: object) -> None:

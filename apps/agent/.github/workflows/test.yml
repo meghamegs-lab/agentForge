@@ -2,7 +2,7 @@ name: AgentForge CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
     paths: ['apps/agent/**']
   pull_request:
     branches: [main]

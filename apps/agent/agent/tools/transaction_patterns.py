@@ -6,7 +6,7 @@ Standout: Behavioural coaching from your OWN trade history — no other tool doe
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.tools import tool
@@ -227,7 +227,7 @@ async def _transaction_patterns() -> dict[str, Any]:
             "all_positions_analysed": len(trade_results),
             "behavioural_patterns": patterns,
             "coaching_summary": coaching,
-            "data_timestamp": datetime.now(timezone.utc).isoformat(),
+            "data_timestamp": datetime.now(UTC).isoformat(),
         }
 
     except GhostfolioError as e:

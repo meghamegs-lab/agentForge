@@ -4,13 +4,12 @@ Returns current holdings, allocation percentages, and total portfolio value.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.tools import tool
 
 from agent.clients.ghostfolio import GhostfolioError, get_shared_client
-
 
 # ── Implementation (importable in unit tests without @tool overhead) ──────────
 
@@ -26,10 +25,7 @@ async def _get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
         raw = data.get("holdings", [])
 
         # Ghostfolio can return holdings as either a list or a dict keyed by symbol
-        if isinstance(raw, dict):
-            holdings_list = list(raw.values())
-        else:
-            holdings_list = raw
+        holdings_list = list(raw.values()) if isinstance(raw, dict) else raw
 
         if not holdings_list:
             return {
@@ -38,7 +34,7 @@ async def _get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
                 "total_value": 0.0,
                 "currency": "USD",
                 "holdings": [],
-                "data_timestamp": datetime.now(timezone.utc).isoformat(),
+                "data_timestamp": datetime.now(UTC).isoformat(),
             }
 
         processed = []
@@ -76,7 +72,7 @@ async def _get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
             "currency": "USD",
             "position_count": len(processed),
             "holdings": processed,
-            "data_timestamp": datetime.now(timezone.utc).isoformat(),
+            "data_timestamp": datetime.now(UTC).isoformat(),
         }
 
     except GhostfolioError as e:

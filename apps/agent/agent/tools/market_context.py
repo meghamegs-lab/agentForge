@@ -6,13 +6,12 @@ Standout: Generic macro insight applied to your actual portfolio — not generic
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.tools import tool
 
 from agent.clients.ghostfolio import GhostfolioError, get_shared_client
-
 
 # Sector sensitivity map: how each sector behaves in macro regimes
 SECTOR_MACRO_SENSITIVITY: dict[str, dict[str, str]] = {
@@ -223,7 +222,7 @@ async def _market_context(macro_theme: str) -> dict[str, Any]:
                 "This analysis uses historical sector patterns. "
                 "Macro outcomes are uncertain — treat as directional guidance only."
             ),
-            "data_timestamp": datetime.now(timezone.utc).isoformat(),
+            "data_timestamp": datetime.now(UTC).isoformat(),
         }
 
     except GhostfolioError as e:

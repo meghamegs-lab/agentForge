@@ -17,18 +17,18 @@ All network calls are mocked with respx — zero real I/O.
 """
 from __future__ import annotations
 
-import pytest
-import respx
+from unittest.mock import MagicMock, patch
+
 import httpx
-from unittest.mock import patch, MagicMock
 import pandas as pd
+import respx
 
 from agent.config import settings
-from agent.tools.portfolio import _get_portfolio_summary
-from agent.tools.performance import _get_performance
-from agent.tools.transactions import _get_transactions
 from agent.tools.diversification import _analyze_diversification
 from agent.tools.market import get_market_data
+from agent.tools.performance import _get_performance
+from agent.tools.portfolio import _get_portfolio_summary
+from agent.tools.transactions import _get_transactions
 
 BASE_URL = settings.ghostfolio_base_url.rstrip("/")
 AUTH_RESP = {"authToken": "eval-token-abc"}

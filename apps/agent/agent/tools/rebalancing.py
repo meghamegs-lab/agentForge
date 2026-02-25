@@ -5,7 +5,7 @@ Standout: Returns specific dollar amounts to buy/sell — not just "you're overw
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.tools import tool
@@ -172,7 +172,7 @@ async def _rebalancing_plan(
                 "Selling appreciated positions triggers capital gains tax. "
                 "Consider rebalancing by directing new contributions to underweight buckets first."
             ),
-            "data_timestamp": datetime.now(timezone.utc).isoformat(),
+            "data_timestamp": datetime.now(UTC).isoformat(),
         }
 
     except GhostfolioError as e:

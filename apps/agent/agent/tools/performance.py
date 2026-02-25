@@ -4,13 +4,12 @@ Returns portfolio performance metrics across multiple time periods.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.tools import tool
 
 from agent.clients.ghostfolio import GhostfolioError, get_shared_client
-
 
 # ── Implementation (importable in unit tests without @tool overhead) ──────────
 
@@ -54,7 +53,7 @@ async def _get_performance(date_range: str = "ytd") -> dict[str, Any]:
                 "current_value": round(requested.get("current_value", 0), 2),
             },
             "all_periods": periods,
-            "data_timestamp": datetime.now(timezone.utc).isoformat(),
+            "data_timestamp": datetime.now(UTC).isoformat(),
         }
 
     except GhostfolioError as e:

@@ -9,6 +9,7 @@ Checkpointing:
   so users are fully isolated from each other.
 """
 import uuid
+
 import chainlit as cl
 from langchain_core.messages import HumanMessage
 

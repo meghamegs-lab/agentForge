@@ -6,7 +6,7 @@ Checks for new risks since last session — tells you what changed, not just cur
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.tools import tool
@@ -58,7 +58,7 @@ async def _proactive_monitor(prev_snap_json: str = "") -> dict[str, Any]:
                 "alerts": [],
                 "overall_risk_level": "NONE",
                 "current_snapshot": {},
-                "data_timestamp": datetime.now(timezone.utc).isoformat(),
+                "data_timestamp": datetime.now(UTC).isoformat(),
             }
 
         total_value = sum(h.get("value", 0) or 0 for h in holdings.values())
@@ -67,7 +67,7 @@ async def _proactive_monitor(prev_snap_json: str = "") -> dict[str, Any]:
         current_snapshot = {
             "total_value": round(total_value, 2),
             "position_count": len(holdings),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "allocations": {
                 sym: round((h.get("value", 0) or 0) / total_value * 100, 2)
                 for sym, h in holdings.items()
@@ -203,7 +203,7 @@ async def _proactive_monitor(prev_snap_json: str = "") -> dict[str, Any]:
             "portfolio_value": round(total_value, 2),
             "position_count": len(holdings),
             "current_snapshot": current_snapshot,  # caller should save for next session
-            "data_timestamp": datetime.now(timezone.utc).isoformat(),
+            "data_timestamp": datetime.now(UTC).isoformat(),
         }
 
     except GhostfolioError as e:

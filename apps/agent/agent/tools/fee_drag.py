@@ -5,7 +5,7 @@ Standout: Expresses fees as % of total returns — no retail tool surfaces this 
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.tools import tool
@@ -132,7 +132,7 @@ async def _fee_drag(date_range: str = "max") -> dict[str, Any]:
             "verdict": verdict,
             "fee_by_symbol": fee_symbols[:10],
             "fee_by_year": {k: round(v, 2) for k, v in sorted(fee_by_year.items())},
-            "data_timestamp": datetime.now(timezone.utc).isoformat(),
+            "data_timestamp": datetime.now(UTC).isoformat(),
         }
 
     except GhostfolioError as e:

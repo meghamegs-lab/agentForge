@@ -2,18 +2,16 @@
 Unit tests for all 5 verification checks.
 Pure Python logic — no LLM, no network calls.
 """
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
 from agent.verification import (
-    check_disclaimer,
-    check_hallucination,
-    check_freshness,
     check_concentration,
     check_confidence,
+    check_disclaimer,
+    check_freshness,
+    check_hallucination,
     run_verification_pipeline,
 )
-
 
 # ── 1. Disclaimer ──────────────────────────────────────────────────────────────
 
@@ -81,13 +79,13 @@ class TestHallucinationGuard:
 
 class TestFreshness:
     def test_passes_when_timestamp_is_recent(self):
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         _, flags = check_freshness("result", [{"current_price": 100, "data_timestamp": now}])
         stale = [f for f in flags if f["type"] == "STALE_DATA"]
         assert len(stale) == 0
 
     def test_warns_when_market_data_is_stale(self):
-        old_ts = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+        old_ts = (datetime.now(UTC) - timedelta(minutes=20)).isoformat()
         _, flags = check_freshness("result", [{"current_price": 100, "data_timestamp": old_ts}])
         assert any(f["type"] == "STALE_DATA" for f in flags)
 
@@ -97,7 +95,7 @@ class TestFreshness:
 
     def test_portfolio_data_has_longer_threshold(self):
         # 45 min old portfolio data should NOT be flagged (threshold=60min)
-        ts_45min_ago = (datetime.now(timezone.utc) - timedelta(minutes=45)).isoformat()
+        ts_45min_ago = (datetime.now(UTC) - timedelta(minutes=45)).isoformat()
         _, flags = check_freshness("result", [{"holdings": [], "data_timestamp": ts_45min_ago}])
         stale = [f for f in flags if f["type"] == "STALE_DATA"]
         assert len(stale) == 0

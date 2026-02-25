@@ -4,13 +4,12 @@ Returns transaction history with fee analysis and categorization.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.tools import tool
 
 from agent.clients.ghostfolio import GhostfolioError, get_shared_client
-
 
 # ── Implementation (importable in unit tests without @tool overhead) ──────────
 
@@ -40,7 +39,7 @@ async def _get_transactions(
                 "message": "No transactions found for the specified filters.",
                 "transactions": [],
                 "summary": {},
-                "data_timestamp": datetime.now(timezone.utc).isoformat(),
+                "data_timestamp": datetime.now(UTC).isoformat(),
             }
 
         # Filter by type if requested
@@ -94,7 +93,7 @@ async def _get_transactions(
                     for t in type_counts
                 },
             },
-            "data_timestamp": datetime.now(timezone.utc).isoformat(),
+            "data_timestamp": datetime.now(UTC).isoformat(),
         }
 
     except GhostfolioError as e:

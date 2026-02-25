@@ -16,22 +16,21 @@ Checkpointing:
 from __future__ import annotations
 
 import json
-import structlog
 from typing import Any
 
+import structlog
 from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import ToolMessage, SystemMessage, AIMessage
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 
 from agent.config import settings
 from agent.graph.state import AgentState
+from agent.prompts import SYSTEM_PROMPT
 from agent.tools import ALL_TOOLS
 from agent.verification import run_verification_pipeline
-from agent.prompts import SYSTEM_PROMPT
-
 
 # ── LLM Singleton ─────────────────────────────────────────────────────────────
 # Built ONCE at module import time — never rebuilt per-request.

@@ -4,7 +4,7 @@ Returns structured dicts with timestamps for freshness checking.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import yfinance as yf
@@ -38,7 +38,7 @@ class MarketDataClient:
                 "fifty_two_week_low": getattr(info, "year_low", None),
                 "market_cap": getattr(info, "market_cap", None),
                 "volume": getattr(info, "three_month_average_volume", None),
-                "data_timestamp": datetime.now(timezone.utc).isoformat(),
+                "data_timestamp": datetime.now(UTC).isoformat(),
             }
         except Exception as e:
             return {
@@ -55,5 +55,5 @@ class MarketDataClient:
         return {
             "status": "ok",
             "quotes": results,
-            "data_timestamp": datetime.now(timezone.utc).isoformat(),
+            "data_timestamp": datetime.now(UTC).isoformat(),
         }
