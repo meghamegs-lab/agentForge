@@ -30,7 +30,9 @@ class Settings(BaseSettings):
     fallback_model: str = "gpt-4o-mini"
 
     # ── Ghostfolio ────────────────────────────────────────────────────────────
-    ghostfolio_base_url: str = "https://ghostfol.io"
+    # Required — must point to your Ghostfolio instance (e.g. Railway URL).
+    # No default: startup will fail fast if this env var is missing.
+    ghostfolio_base_url: str
     ghostfolio_access_token: str = ""
     ghostfolio_public_access_id: str = ""
 

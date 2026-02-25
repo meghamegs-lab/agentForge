@@ -144,8 +144,8 @@ jobs:
           check-latest: true # always pull the newest patch of that major (satisfies >=22.18.0)
           cache: npm
 
-      - name: Upgrade npm to match local (npm 11)
-        run: npm install -g npm@latest
+      - name: Upgrade npm to match local (npm 11.8.0)
+        run: npm install -g npm@11.8.0
 
       - name: Install npm dependencies
         run: npm ci
