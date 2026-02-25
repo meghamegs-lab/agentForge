@@ -97,17 +97,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allows the Angular frontend (port 4200) and Ghostfolio UI (port 3333)
-# to call this API from the browser.
+# CORS — allows the Angular frontend and Ghostfolio UI to call this API.
+# NOTE: "allow_credentials=True" + "*" wildcard is an invalid CORS combination
+# that browsers reject silently. Always list origins explicitly.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:4200",   # Angular dev server
-        "http://localhost:3333",   # Ghostfolio UI
-        "http://localhost:8000",   # Chainlit (for cross-testing)
-        "*",                       # Allow all in dev — restrict in production
+        "http://localhost:4200",                                   # Angular dev server
+        "http://localhost:3333",                                   # Ghostfolio local
+        "http://localhost:8000",                                   # Chainlit local
+        "https://ghostfolio-production-453e.up.railway.app",      # Ghostfolio prod (Railway)
     ],
-    allow_credentials=True,
+    allow_credentials=False,   # Angular HttpClient does not send cookies — no credentials needed
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
