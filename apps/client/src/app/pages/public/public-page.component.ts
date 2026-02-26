@@ -8,7 +8,6 @@ import {
 import { hasPermission, permissions } from '@ghostfolio/common/permissions';
 import { Market } from '@ghostfolio/common/types';
 import { GfActivitiesTableComponent } from '@ghostfolio/ui/activities-table/activities-table.component';
-import { GfAiChatComponent } from '@ghostfolio/ui/ai-chat';
 import { GfHoldingsTableComponent } from '@ghostfolio/ui/holdings-table/holdings-table.component';
 import { GfPortfolioProportionChartComponent } from '@ghostfolio/ui/portfolio-proportion-chart/portfolio-proportion-chart.component';
 import { DataService } from '@ghostfolio/ui/services';
@@ -38,7 +37,6 @@ import { catchError, takeUntil } from 'rxjs/operators';
   imports: [
     CommonModule,
     GfActivitiesTableComponent,
-    GfAiChatComponent,
     GfHoldingsTableComponent,
     GfPortfolioProportionChartComponent,
     GfValueComponent,
