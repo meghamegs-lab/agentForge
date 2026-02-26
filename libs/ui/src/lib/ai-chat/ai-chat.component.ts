@@ -51,6 +51,7 @@ export interface AiChatMessage {
   // Full structured response — shown in the debug panel
   rawResponse?: FortioApiResponse;
   showRaw?: boolean;                           // Toggle state for debug panel
+  suggestions?: string[];                      // Clickable prompt chips (welcome msg)
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -105,10 +106,23 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
     this.messages.push({
       role: 'assistant',
       content:
-        '👋 Hi! I\'m **Fortio**, your AI portfolio assistant.\n\nAsk me anything about your investments:\n• *What does my portfolio look like?*\n• *How has my portfolio performed this year?*\n• *Am I too concentrated in any sector?*',
+        '👋 Hi! I\'m **Fortio**, your AI portfolio assistant.\n' +
+        'Click any suggestion below or type your own question:',
       confidence: 'HIGH',
       hasWarning: false,
-      timestamp: new Date()
+      timestamp: new Date(),
+      suggestions: [
+        'What does my portfolio look like?',
+        'How has my portfolio performed this year?',
+        'Am I too concentrated in any sector?',
+        'What fees are dragging down my returns?',
+        'Give me a full portfolio health scorecard',
+        'How is my portfolio positioned if rates keep rising?',
+        'What rebalancing trades should I make?',
+        'What patterns do you see in my trading behaviour?',
+        'What are my top concentration or volatility risks?',
+        "What's the current price of NVDA?"
+      ]
     });
   }
 
@@ -211,6 +225,18 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
       LOW: '🔴'
     };
     return map[confidence] ?? '🟡';
+  }
+
+  /** Copy a suggestion chip text into the input box and focus the textarea */
+  public onSuggestionClick(suggestion: string): void {
+    this.inputText = suggestion;
+    this.changeDetectorRef.markForCheck();
+    setTimeout(() => {
+      const ta = document.querySelector<HTMLTextAreaElement>('.gf-ai-chat-input');
+      if (ta) {
+        ta.focus();
+      }
+    }, 0);
   }
 
   /** Toggle the raw structured debug panel for a specific message */

@@ -129,12 +129,7 @@ app = FastAPI(
 # that browsers reject silently. Always list origins explicitly.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:4200",                                   # Angular dev server
-        "http://localhost:3333",                                   # Ghostfolio local
-        "http://localhost:8000",                                   # Chainlit local
-        "https://ghostfolio-production-453e.up.railway.app",      # Ghostfolio prod (Railway)
-    ],
+    allow_origins=settings.cors_origins,   # configured via CORS_ORIGINS in .env
     allow_credentials=False,   # Angular HttpClient does not send cookies — no credentials needed
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],

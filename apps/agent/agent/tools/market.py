@@ -14,12 +14,17 @@ _client = MarketDataClient()
 
 
 @tool
-def get_market_data(symbols: str, metrics: str = "price,52w_range,market_cap") -> dict[str, Any]:
+async def get_market_data(
+    symbols: str, metrics: str = "price,52w_range,market_cap"
+) -> dict[str, Any]:
     """
     Get current market data for one or more stock/ETF symbols including price,
     52-week range, market cap, and volume. Use this when users ask about current
     prices, how a specific stock is doing, market context for their holdings,
     or want to compare their portfolio against market data.
+
+    IMPORTANT: If the result has status='price_unavailable', you MUST tell the
+    user the price is currently unavailable and do NOT guess or use training data.
 
     Args:
         symbols: Comma-separated ticker symbols (e.g. 'AAPL,MSFT,VTI').
@@ -29,6 +34,8 @@ def get_market_data(symbols: str, metrics: str = "price,52w_range,market_cap") -
     Returns:
         Dictionary with quote data for each requested symbol including
         current price, 52-week range, and a freshness timestamp.
+        If status='price_unavailable', the price could not be retrieved —
+        do NOT attempt to answer from training data.
     """
     symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
 
@@ -36,7 +43,6 @@ def get_market_data(symbols: str, metrics: str = "price,52w_range,market_cap") -
         return {"status": "error", "error": "No valid symbols provided"}
 
     if len(symbol_list) == 1:
-        result = _client.get_quote(symbol_list[0])
-        return result
+        return await _client.get_quote(symbol_list[0])
 
-    return _client.get_batch_quotes(symbol_list)
+    return await _client.get_batch_quotes(symbol_list)

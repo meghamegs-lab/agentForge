@@ -1,0 +1,108 @@
+---
+alwaysApply: false
+description: Docker deployment, ports, environment variables, and infrastructure details for the Fortio agent service
+---
+
+# Fortio Agent – Deployment & Infrastructure
+
+## Docker
+
+- **Dockerfile**: [apps/agent/Dockerfile](mdc:apps/agent/Dockerfile)
+- Two-stage build: `base` (deps + code) → `runtime` (non-root `appuser`)
+- Runs as non-root user (`appuser`, UID 1000)
+- Both services start in the same container via shell `&` in CMD
+
+## Ports
+
+| Port | Service |
+|---|---|
+| `8000` | Chainlit UI (`chainlit run agent/ui/chainlit_app.py`) |
+| `8001` | FastAPI REST API (`uvicorn agent.api.main:app`) |
+
+## Local Dev with Docker Compose
+
+```bash
+cd apps/agent/docker
+docker compose up          # start all services
+docker compose down        # stop and remove containers
+docker compose down -v     # also remove volumes (wipes DB)
+```
+
+Compose file: [apps/agent/docker/docker-compose.yml](mdc:apps/agent/docker/docker-compose.yml)
+DB init script: [apps/agent/docker/init-db.sql](mdc:apps/agent/docker/init-db.sql)
+
+## Required Environment Variables
+
+Defined in `agent/config.py` via pydantic-settings. Create `apps/agent/.env`:
+
+```bash
+# LLM
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...           # fallback only
+
+# Ghostfolio
+GHOSTFOLIO_BASE_URL=https://ghostfol.io
+GHOSTFOLIO_ACCESS_TOKEN=...
+GHOSTFOLIO_PUBLIC_ACCESS_ID=...
+
+# Observability (LangSmith)
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=ls__...
+LANGCHAIN_PROJECT=fortio-agent
+
+# Infrastructure
+DATABASE_URL=postgresql://user:pass@localhost:5432/fortio
+REDIS_URL=redis://localhost:6379/0
+
+# App tuning
+ENVIRONMENT=production
+LOG_LEVEL=INFO
+PORTFOLIO_CONCENTRATION_THRESHOLD=0.20
+MARKET_DATA_FRESHNESS_MINUTES=15
+MAX_TOOL_RETRIES=2
+```
+
+## Infrastructure Dependencies
+
+| Service | Purpose | Default |
+|---|---|---|
+| **PostgreSQL** | Conversation checkpointing, user data | `DATABASE_URL` |
+| **Redis** | Caching, session state | `redis://localhost:6379/0` |
+
+## Running Locally (without Docker)
+
+```bash
+cd apps/agent
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+# Start Chainlit UI (port 8000)
+chainlit run agent/ui/chainlit_app.py
+
+# Start FastAPI (port 8001) — in a separate terminal
+uvicorn agent.api.main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+## Stopping Services
+
+```bash
+# Kill Chainlit (port 8000)
+kill $(lsof -ti :8000)
+
+# Kill FastAPI (port 8001)
+kill $(lsof -ti :8001)
+
+# Kill both at once
+kill $(lsof -ti :8000) $(lsof -ti :8001)
+```
+
+## Build & Push (CI/CD)
+
+```bash
+# Build from apps/agent/ directory
+docker build -t fortio-agent:latest .
+
+# Tag and push
+docker tag fortio-agent:latest <registry>/fortio-agent:latest
+docker push <registry>/fortio-agent:latest
+```
