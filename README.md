@@ -17,11 +17,11 @@
 
 ### 🚀 Production Deployments (Railway)
 
-| Service | URL |
-|---|---|
-| **Ghostfolio App** | [ghostfolio-production.up.railway.app](https://ghostfolio-production.up.railway.app) |
-| **Fortio Agent API** | [fortio-agent-production.up.railway.app](https://fortio-agent-production.up.railway.app) |
-| **Fortio Agent Docs** | [fortio-agent-production.up.railway.app/docs](https://fortio-agent-production.up.railway.app/docs) |
+| Service                                           | URL                                                                                                                                   |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ghostfolio App**                                | [ghostfolio-production.up.railway.app](https://ghostfolio-production-453e.up.railway.app/en/home)                                     |
+| **Ghostfolio Demo Account to test Fortio Agent ** | [fortio-agent-production.up.railway.app](https://ghostfolio-production-453e.up.railway.app/en/p/e6b67d66-b727-4fa8-a3ac-01ec36d5dde1) |
+| **Fortio Agent Docs**                             | [fortio-agent-production.up.railway.app/docs](https://fortio-agent-production.up.railway.app/docs)                                    |
 
 </div>
 
@@ -39,15 +39,15 @@
 
 ### What Fortio Adds
 
-| Layer | Details |
-|---|---|
-| **Agent** | LangGraph `StateGraph` + Claude Sonnet (primary) + GPT-4o (fallback) |
-| **Tools** | 11 domain tools — 5 core (portfolio, performance, transactions, diversification, market) + 6 advanced (fee drag, health scorecard, rebalancing plan, market context, transaction patterns, proactive risk monitor) |
-| **Verification** | 5-stage pipeline: disclaimer injection · hallucination guard · data freshness · concentration risk · confidence scoring |
-| **API** | FastAPI REST endpoint (`POST /api/chat`) with multi-turn conversation history via Postgres checkpointing |
-| **UI** | Chainlit chat interface (dev/demo) + embedded Angular chat widget in Ghostfolio |
-| **Observability** | LangSmith tracing |
-| **Deployment** | Railway (CI/CD via GitHub Actions) |
+| Layer             | Details                                                                                                                                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Agent**         | LangGraph `StateGraph` + Claude Sonnet (primary) + GPT-4o (fallback)                                                                                                                                               |
+| **Tools**         | 11 domain tools — 5 core (portfolio, performance, transactions, diversification, market) + 6 advanced (fee drag, health scorecard, rebalancing plan, market context, transaction patterns, proactive risk monitor) |
+| **Verification**  | 5-stage pipeline: disclaimer injection · hallucination guard · data freshness · concentration risk · confidence scoring                                                                                            |
+| **API**           | FastAPI REST endpoint (`POST /api/chat`) with multi-turn conversation history via Postgres checkpointing                                                                                                           |
+| **UI**            | Chainlit chat interface (dev/demo) + embedded Angular chat widget in Ghostfolio                                                                                                                                    |
+| **Observability** | LangSmith tracing                                                                                                                                                                                                  |
+| **Deployment**    | Railway (CI/CD via GitHub Actions)                                                                                                                                                                                 |
 
 ### Agent Architecture
 
@@ -61,13 +61,14 @@ State is persisted per `conversation_id` in Postgres using LangGraph's `AsyncPos
 
 The agent ships with a comprehensive evaluation suite under [`apps/agent/tests/eval/`](./apps/agent/tests/eval/):
 
-| Eval file | What it tests |
-|---|---|
-| [`test_correctness.py`](./apps/agent/tests/eval/test_correctness.py) | 12 tests — arithmetic accuracy, percentage conversions, sort order, currency handling, sector rollup |
-| [`test_tool_selection.py`](./apps/agent/tests/eval/test_tool_selection.py) | 10 tests — tool docstring coverage, domain boundary isolation, parameter mapping |
-| [`test_edge_cases.py`](./apps/agent/tests/eval/test_edge_cases.py) | 10 tests — dict vs list holdings format, zero-value holdings, missing fields, unicode names, large portfolios, invalid inputs |
+| Eval file                                                                  | What it tests                                                                                                                 |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| [`test_correctness.py`](./apps/agent/tests/eval/test_correctness.py)       | 12 tests — arithmetic accuracy, percentage conversions, sort order, currency handling, sector rollup                          |
+| [`test_tool_selection.py`](./apps/agent/tests/eval/test_tool_selection.py) | 10 tests — tool docstring coverage, domain boundary isolation, parameter mapping                                              |
+| [`test_edge_cases.py`](./apps/agent/tests/eval/test_edge_cases.py)         | 10 tests — dict vs list holdings format, zero-value holdings, missing fields, unicode names, large portfolios, invalid inputs |
 
 Run the evals:
+
 ```bash
 cd apps/agent
 pytest tests/eval/ -v
