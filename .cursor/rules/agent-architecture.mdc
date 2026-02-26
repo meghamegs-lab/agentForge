@@ -1,0 +1,69 @@
+---
+globs: apps/agent/**
+description: Core architecture, layout, and design rules for the Fortio agent service
+---
+
+# Fortio Agent – Architecture & Design Rules
+
+The agent is a standalone Python 3.12 service at `apps/agent/`, deployed as a Docker container.
+It is named **Fortio** — a personal finance assistant backed by Ghostfolio.
+
+## Graph Architecture
+
+- Orchestration uses **LangGraph `StateGraph`** — never use `AgentExecutor` or LCEL chains as top-level orchestrators.
+- The graph is defined in [apps/agent/agent/graph/graph.py](mdc:apps/agent/agent/graph/graph.py)
+- Node flow: `reasoning → tools → collect_results → reasoning (loop) → verify → END`
+- Routing: `should_use_tools()` routes post-reasoning; `should_escalate()` routes post-verification
+- The compiled singleton is `agent_graph = build_graph()` — import and reuse this, never rebuild it per-request
+
+## State
+
+- State is `AgentState` (TypedDict) defined in [apps/agent/agent/graph/state.py](mdc:apps/agent/agent/graph/state.py)
+- Key fields: `messages` (add_messages reducer), `tool_results`, `verification_flags`, `confidence`, `should_escalate`
+- Always pass the full state dict when invoking: `await agent_graph.ainvoke(state)`
+
+## File Layout — where things go
+
+| What | Where |
+|---|---|
+| LangGraph graph & nodes | `agent/graph/graph.py` |
+| AgentState definition | `agent/graph/state.py` |
+| LangChain tools | `agent/tools/` (one file per domain) |
+| Raw HTTP clients | `agent/clients/` (`ghostfolio.py`, `market.py`) |
+| Chainlit UI | `agent/ui/chainlit_app.py` |
+| FastAPI routes | `agent/api/` |
+| Pydantic-settings config | `agent/config.py` — single `settings` singleton |
+| System prompt | `agent/prompts.py` — `SYSTEM_PROMPT` constant |
+| Verification pipeline | `agent/verification/` |
+
+## LLM Configuration
+
+- Primary: **Claude** (`claude-sonnet-4-5`) via `langchain-anthropic`
+- Fallback: **GPT-4o** via `langchain-openai`
+- Always `temperature=0` for deterministic financial responses
+- Tools are bound at LLM construction time via `.bind_tools(ALL_TOOLS)`
+- Config comes from `agent.config.settings` (pydantic-settings, reads from `.env`)
+
+## The 5 Agent Tools
+
+All tools live in `agent/tools/` and are exported as `ALL_TOOLS`:
+1. `get_portfolio_summary` — current holdings, allocations, total value
+2. `get_performance` — returns across time periods
+3. `get_transactions` — trade history, fees, dividends
+4. `analyze_diversification` — sector/geography breakdown, concentration risk
+5. `get_market_data` — live prices via yfinance
+
+Never add business logic directly to nodes — put it in tools or clients.
+
+## Verification Layer
+
+- Every final LLM response passes through `run_verification_pipeline()` in `agent/verification/`
+- Checks for: hallucination, data freshness, concentration risk, unsupported recommendations, low confidence
+- `confidence` is one of: `HIGH`, `MEDIUM`, `LOW`
+- If `should_escalate=True` (HIGH severity + POTENTIAL_HALLUCINATION), the graph routes to escalation
+
+## Clients vs Tools
+
+- **Clients** (`agent/clients/`) — raw async HTTP calls using `httpx`, no LangChain awareness
+- **Tools** (`agent/tools/`) — LangChain `@tool`-decorated functions that call clients, format results for the LLM
+- Never put `httpx` calls directly inside graph nodes

@@ -1,0 +1,62 @@
+---
+globs: apps/agent/**/*.py
+description: Python coding standards for the Fortio agent service
+---
+
+# Fortio Agent – Python Style & Conventions
+
+## Python Version & Typing
+
+- Target **Python 3.12+**
+- Use modern built-in generics: `list[str]`, `dict[str, Any]`, `tuple[int, ...]` — never `List`, `Dict`, `Tuple` from `typing`
+- Use `from __future__ import annotations` at the top of files with forward references
+- Prefer `TypedDict` for structured dicts (see `AgentState`); use `dataclass` or `pydantic.BaseModel` for classes with validation
+- All async functions must use `async def` + `await` — never use `asyncio.run()` inside agent code
+
+## Configuration
+
+- All config lives in `agent/config.py` as a `pydantic-settings` `BaseSettings` subclass
+- Access via the `settings` singleton: `from agent.config import settings`
+- Never hardcode API keys, URLs, or thresholds — always read from `settings`
+- New env vars must be added to `Settings` with a `Field(env="VAR_NAME")` annotation
+
+## Logging
+
+- Use **`structlog`** — never use `print()`, `logging.getLogger()`, or stdlib `logging` directly
+- Log at appropriate levels: `log.info()`, `log.warning()`, `log.error()`, `log.debug()`
+- Include relevant context as keyword args: `log.info("tool called", tool="get_portfolio_summary", user_id=user_id)`
+
+## HTTP Clients
+
+- Use **`httpx`** (async) for all HTTP calls — never use `requests`
+- All client methods in `agent/clients/` should be `async def` and use `httpx.AsyncClient`
+- Use **`tenacity`** for retry logic on flaky external calls (Ghostfolio API, market data)
+- Wrap client calls in try/except and return structured error dicts rather than raising to the graph
+
+## Error Handling
+
+- Tools should never raise unhandled exceptions — catch and return `{"error": "...", "data": None}`
+- Graph nodes that call `await` must be wrapped in try/except; surface errors via state, not exceptions
+- The Chainlit UI has a top-level `except Exception as e` handler in `on_message` — don't rely on it for business logic errors
+
+## LangChain / LangGraph Patterns
+
+- Decorate tools with `@tool` from `langchain_core.tools`
+- All tools must have a clear docstring — this becomes the tool description the LLM sees
+- Tool functions should be `async def` where possible (Ghostfolio client calls are async)
+- State updates from nodes must return a `dict` with only the keys being updated
+- Never mutate `state` in-place — always return new values
+
+## Testing
+
+- Test runner: **`pytest`** with **`pytest-asyncio`** (`asyncio_mode = "auto"` in `pytest.ini`)
+- Mock `httpx` calls using **`respx`** — never make real network calls in unit tests
+- Unit tests go in `tests/unit/`, integration tests in `tests/integration/`
+- Use fixtures defined in `tests/conftest.py`
+- Aim for: unit tests on tools/clients, integration tests on the full graph
+
+## Code Quality Tools
+
+- **`ruff`** for linting and formatting (replaces flake8, isort, black)
+- **`mypy`** for type checking
+- Run before committing: `ruff check . && mypy agent/`

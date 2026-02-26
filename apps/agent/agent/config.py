@@ -6,7 +6,14 @@ Access the singleton:  from agent.config import settings
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve the `apps/agent/` directory from this file's location so that
+# `.env` is found correctly regardless of the working directory the server
+# is started from (repo root, apps/agent/, etc.).
+_AGENT_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
@@ -16,7 +23,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_AGENT_DIR / ".env"),   # always reads apps/agent/.env
         case_sensitive=False,
         extra="ignore",          # silently ignore unknown env vars
     )
@@ -47,6 +54,19 @@ class Settings(BaseSettings):
     # LangGraph conversation checkpointing — uses DATABASE_URL (Postgres).
     # Set to "memory" to fall back to in-memory checkpointing (no persistence).
     checkpoint_backend: str = "postgres"
+
+    # ── CORS ──────────────────────────────────────────────────────────────────
+    # Comma-separated list of allowed origins for the FastAPI CORS middleware.
+    # Defaults cover local Angular dev server (http + https) and Ghostfolio.
+    # Override CORS_ORIGINS in .env or Railway to add your production domain.
+    cors_origins: list[str] = [
+        "http://localhost:4200",
+        "https://localhost:4200",
+        "http://localhost:3333",
+        "https://localhost:3333",
+        "http://localhost:8000",
+        "https://ghostfolio-production-453e.up.railway.app",
+    ]
 
     # ── App ───────────────────────────────────────────────────────────────────
     environment: str = "development"

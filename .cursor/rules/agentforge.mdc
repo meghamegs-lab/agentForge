@@ -1,0 +1,112 @@
+# AgentForge — Cursor IDE Rules
+# These rules guide Claude in Cursor to generate correct, production-quality code for this project.
+
+## Project Context
+This is a Python AI agent built on LangGraph that provides financial portfolio analysis
+by integrating with the Ghostfolio REST API. The agent uses Claude (Anthropic) as the
+primary LLM and runs a 5-stage verification pipeline on every response.
+
+## Architecture Rules
+
+### Always
+- Use LangGraph `StateGraph` with `AgentState` TypedDict for all agent logic
+- Use `async/await` for all tool implementations (tools call `asyncio.run()` for sync compatibility)
+- Use `pydantic-settings` for all configuration — never hardcode secrets or URLs
+- Use `httpx.AsyncClient` for all HTTP calls inside `GhostfolioClient`
+- Add `data_timestamp` (ISO 8601 UTC) to every tool response dict
+- Return `{"status": "error", "error": "..."}` on failures — never raise unhandled exceptions in tools
+- Run all 5 verifiers via `run_verification_pipeline()` before returning any response to the user
+- Use `tenacity` `@retry` decorator on all Ghostfolio API calls
+- Import tools only from `agent.tools` (via `ALL_TOOLS` list)
+
+### Never
+- Never hardcode API keys, tokens, or URLs — use `agent.config.settings`
+- Never make LLM calls inside tool functions — tools are pure data fetchers
+- Never skip the verification pipeline — every user-facing response must pass through it
+- Never use `requests` (sync) — always use `httpx` (async)
+- Never return raw exceptions to users — catch and return structured error dicts
+- Never use `print()` for logging — use `structlog`
+
+## Testing Rules
+
+### TDD Discipline
+- Write the failing test FIRST, then implement
+- Every tool function must have unit tests with mocked HTTP (use `respx`)
+- Every verification function must have unit tests (pure Python, no mocks needed)
+- Coverage must stay above 85% — CI will fail below this threshold
+- Test files mirror source structure: `tests/unit/tools/` for `agent/tools/`
+
+### Test Patterns
+- Use `@respx.mock` decorator for all httpx mocking in tool tests
+- Use `pytest.fixture` in `conftest.py` for shared mock API responses
+- Use `unittest.mock.patch` for yfinance mocking
+- Always test: happy path, empty/null input, network error, invalid input
+
+## Code Style
+
+### Python
+- Python 3.11+
+- Type hints on all function signatures
+- `from __future__ import annotations` at top of every file
+- Docstrings on all tools (the LLM reads these to understand when to use each tool)
+- Max line length: 100 characters
+- Use `ruff` for linting
+
+### LangGraph Patterns
+- Nodes return `dict` with only the state keys they modify
+- Use `add_messages` annotation for the `messages` field
+- Conditional edges use string routing keys matching node names
+- Always set `set_entry_point()` on the graph
+
+### Tool Docstrings (Critical)
+Tool docstrings are read by the LLM to decide when to use each tool.
+They must clearly describe:
+1. WHAT the tool does
+2. WHEN to use it (natural language query examples)
+3. What each parameter means
+4. What the return dict contains
+
+## File Organization
+```
+agent/
+  config.py          ← Settings only, no business logic
+  prompts.py         ← System prompt and few-shot examples
+  tools/             ← One file per tool, @tool decorated functions
+  verification/      ← __init__.py contains all 5 verifiers + pipeline
+  graph/
+    state.py         ← AgentState TypedDict definition
+    graph.py         ← Graph assembly, nodes, edges, routing
+  clients/
+    ghostfolio.py    ← GhostfolioClient async HTTP client
+    market.py        ← MarketDataClient (yfinance)
+  api/               ← FastAPI routes and schemas
+  ui/                ← Chainlit app
+tests/
+  conftest.py        ← Shared fixtures
+  unit/tools/        ← Tool unit tests
+  unit/verification/ ← Verifier unit tests
+  integration/       ← Full graph flow tests
+  adversarial/       ← Safety and prompt injection tests
+  eval/              ← LangSmith eval dataset and runner
+```
+
+## Verification Pipeline (Non-Negotiable)
+All 5 checks run on EVERY response in this order:
+1. `check_disclaimer` — adds "Not financial advice" for investment language
+2. `check_hallucination` — flags numbers not sourced from tool calls
+3. `check_freshness` — flags stale market data (>15min) or portfolio data (>60min)
+4. `check_concentration` — flags positions >20% of portfolio
+5. `check_confidence` — assigns HIGH/MEDIUM/LOW confidence score
+
+## LLM Configuration
+- Primary: `claude-sonnet-4-5` via `langchain-anthropic`
+- Fallback: `gpt-4o` via `langchain-openai`
+- Temperature: 0 (deterministic for financial data)
+- Always bind tools to the LLM: `llm.bind_tools(ALL_TOOLS)`
+
+## Common Mistakes to Avoid
+- Do not use `LangChain AgentExecutor` — use LangGraph `StateGraph`
+- Do not import tools individually — import from `agent.tools.ALL_TOOLS`
+- Do not forget `asyncio.run()` wrapper in `@tool` functions (LangChain tools are sync)
+- Do not skip `data_timestamp` in tool responses (verification layer needs it)
+- Do not use `WidthType.PERCENTAGE` in any table (DXA only)

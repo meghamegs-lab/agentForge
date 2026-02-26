@@ -1,0 +1,36 @@
+---
+alwaysApply: true
+---
+
+# Git Workflow Rules
+
+## NEVER Push to `main` Without Explicit Permission
+
+Do NOT run `git push origin main` (or any push to `main`) unless the user has
+explicitly said something like:
+- "push to main"
+- "commit and push to main"
+- "deploy to main"
+
+### What You CAN Do Without Asking
+- Make code changes locally (edit files)
+- Run `git add` and `git commit` locally
+- Create local branches
+- Run tests locally
+
+### What Requires Explicit Permission
+- `git push origin main` — NEVER do this proactively
+- `git push` to any remote branch — ask first
+- Force pushes — always ask
+
+## Correct Workflow
+
+1. Make the code change locally
+2. Tell the user what was changed and why
+3. WAIT for the user to say "push it" or "commit and push to main"
+4. Only then run `git add && git commit && git push origin main`
+
+## If You Made an Unauthorized Push
+
+Immediately revert using `git revert` (not `git reset --hard`) to preserve history,
+then push the revert commit.

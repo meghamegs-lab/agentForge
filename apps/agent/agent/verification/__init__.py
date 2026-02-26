@@ -74,17 +74,34 @@ def _extract_numbers_from_tool_results(tool_results: list[dict]) -> set[str]:
     return _extract_numbers(text)
 
 
+def _all_tools_failed(tool_results: list[dict]) -> bool:
+    """
+    Return True if every tool result has a failure status
+    (error, price_unavailable) — meaning no real data was retrieved.
+    """
+    failure_statuses = {"error", "price_unavailable"}
+    return bool(tool_results) and all(
+        r.get("status") in failure_statuses for r in tool_results
+    )
+
+
 def check_hallucination(
     response: str, tool_results: list[dict]
 ) -> tuple[str, list[VerificationFlag]]:
     """
     Flags numeric claims in the response that don't appear in any tool result.
+
+    Two HIGH-severity escalation cases:
+    1. No tools were called at all but LLM states financial numbers.
+    2. ALL tools returned errors / price_unavailable but LLM still states
+       financial numbers — this means the LLM guessed despite having no data.
+
     Skips small integers (counts, years) and round percentages below 5.
     """
     flags: list[VerificationFlag] = []
 
     if not tool_results:
-        # If no tools were called, flag any numeric financial claim
+        # No tools were called — any financial number is fabricated
         nums_in_response = _extract_numbers(response)
         financial_nums = {n for n in nums_in_response if _looks_financial(n)}
         if financial_nums:
@@ -98,6 +115,22 @@ def check_hallucination(
             })
         return response, flags
 
+    # All tools failed — check if LLM guessed anyway
+    if _all_tools_failed(tool_results):
+        nums_in_response = _extract_numbers(response)
+        financial_nums = {n for n in nums_in_response if _looks_financial(n)}
+        if financial_nums:
+            flags.append({
+                "type": "POTENTIAL_HALLUCINATION",
+                "severity": "HIGH",
+                "message": (
+                    f"All data tools returned errors but response still contains "
+                    f"financial numbers {financial_nums} — likely guessed from training data"
+                ),
+            })
+        return response, flags
+
+    # At least one tool succeeded — check for unsupported numbers
     tool_nums = _extract_numbers_from_tool_results(tool_results)
     response_nums = _extract_numbers(response)
 
