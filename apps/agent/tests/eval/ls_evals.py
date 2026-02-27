@@ -315,7 +315,7 @@ def _correctness_target(inputs: dict) -> dict:
             }
 
         if tool == "performance":
-            router.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+            router.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
                 return_value=httpx.Response(200, json=api_resp)
             )
             result = _run(_get_performance(inputs.get("date_range", "ytd")))
@@ -630,7 +630,7 @@ def _latency_target(inputs: dict) -> dict:
             _run(_get_portfolio_summary())
 
         elif tool == "performance":
-            router.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+            router.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
                 return_value=httpx.Response(200, json=api_resp)
             )
             _run(_get_performance(inputs.get("date_range", "ytd")))
@@ -756,7 +756,7 @@ def _run_tool_once(tool: str, api_resp: dict, date_range: str = "ytd") -> dict:
             )
             return _run(_get_portfolio_summary())
         if tool == "performance":
-            router.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+            router.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
                 return_value=httpx.Response(200, json=api_resp)
             )
             return _run(_get_performance(date_range))

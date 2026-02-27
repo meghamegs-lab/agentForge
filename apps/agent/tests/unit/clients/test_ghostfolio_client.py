@@ -63,7 +63,7 @@ class TestBearerTokenCaching:
         respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
             return_value=httpx.Response(200, json={"holdings": []})
         )
-        respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+        respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
             return_value=httpx.Response(200, json={"performance": {}})
         )
 
@@ -189,7 +189,7 @@ class TestGetPortfolioPerformance:
     @respx.mock
     async def test_passes_range_query_param(self):
         _register_auth()
-        perf_route = respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+        perf_route = respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
             return_value=httpx.Response(200, json={"performance": {}})
         )
         client = GhostfolioClient(base_url=BASE_URL, access_token="tok")
@@ -202,7 +202,7 @@ class TestGetPortfolioPerformance:
     @respx.mock
     async def test_default_range_is_max(self):
         _register_auth()
-        perf_route = respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+        perf_route = respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
             return_value=httpx.Response(200, json={"performance": {}})
         )
         client = GhostfolioClient(base_url=BASE_URL, access_token="tok")
@@ -215,7 +215,7 @@ class TestGetPortfolioPerformance:
     async def test_returns_parsed_json(self):
         _register_auth()
         payload = {"performance": {"ytd": {"relativeChange": 0.12}}}
-        respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+        respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
             return_value=httpx.Response(200, json=payload)
         )
         client = GhostfolioClient(base_url=BASE_URL, access_token="tok")

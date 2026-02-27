@@ -106,7 +106,7 @@ class TestGetPerformance:
     @respx.mock
     async def test_returns_ytd_performance_fields(self, sample_performance_response):
         mock_auth()
-        respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+        respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
             return_value=httpx.Response(200, json=sample_performance_response)
         )
         result = await _get_performance("ytd")
@@ -119,7 +119,7 @@ class TestGetPerformance:
     @respx.mock
     async def test_relative_change_is_percentage(self, sample_performance_response):
         mock_auth()
-        respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+        respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
             return_value=httpx.Response(200, json=sample_performance_response)
         )
         result = await _get_performance("ytd")
@@ -129,7 +129,7 @@ class TestGetPerformance:
     @respx.mock
     async def test_invalid_range_falls_back_to_ytd(self, sample_performance_response):
         mock_auth()
-        respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+        respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
             return_value=httpx.Response(200, json=sample_performance_response)
         )
         result = await _get_performance("invalid_range")

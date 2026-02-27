@@ -165,7 +165,7 @@ async def test_performance_raw_fraction_converted_to_percentage():
     The tool must multiply by 100 and round to 2 decimal places.
     """
     _auth()
-    respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+    respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
         return_value=httpx.Response(200, json={
             "performance": {
                 "ytd": {
@@ -194,7 +194,7 @@ async def test_performance_negative_returns_preserved():
     Absolute change should also be negative.
     """
     _auth()
-    respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+    respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
         return_value=httpx.Response(200, json={
             "performance": {
                 "ytd": {

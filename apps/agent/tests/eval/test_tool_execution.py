@@ -140,7 +140,7 @@ def _mock_orders(orders: dict | None = None):
 
 
 def _mock_perf():
-    respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+    respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
         return_value=httpx.Response(200, json=STANDARD_PERF)
     )
 

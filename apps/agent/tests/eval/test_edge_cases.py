@@ -230,7 +230,7 @@ async def test_invalid_performance_period_falls_back_to_ytd():
     The tool must default to "ytd" rather than raising an exception.
     """
     _auth()
-    respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+    respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
         return_value=httpx.Response(200, json={
             "performance": {
                 "ytd": {"relativeChange": 0.05, "absoluteChange": 400.0, "currentValue": 8400.0},
