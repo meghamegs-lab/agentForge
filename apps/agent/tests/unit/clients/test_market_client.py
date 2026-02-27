@@ -135,7 +135,7 @@ class TestGetBatchQuotes:
 
     async def test_mixed_valid_and_invalid_symbols(self):
         """Batch must succeed even if some symbols are unavailable."""
-        def _side_effect(symbol: str) -> MagicMock:
+        def _side_effect(symbol: str, **_: object) -> MagicMock:
             if symbol == "AAPL":
                 return _mock_ticker(175.0)
             return _mock_ticker(None)  # invalid → price_unavailable
@@ -157,7 +157,7 @@ class TestGetBatchQuotes:
         """Verify gather is used — all three Ticker objects must be created."""
         call_log: list[str] = []
 
-        def _tracking_ticker(symbol: str) -> MagicMock:
+        def _tracking_ticker(symbol: str, **_: object) -> MagicMock:
             call_log.append(symbol)
             return _mock_ticker(100.0)
 
