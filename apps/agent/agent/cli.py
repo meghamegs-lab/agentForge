@@ -19,13 +19,11 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import Optional
 
 import structlog
 import typer
 from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
-from rich.columns import Columns
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -369,7 +367,7 @@ def ask(
             final_state = asyncio.run(_invoke(question, conversation_id, user_id))
         except Exception as exc:
             console.print(f"[bold red]Error:[/bold red] {exc}")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from exc
 
     _render_response(final_state, verbose=verbose)
     if suggest:
@@ -380,7 +378,7 @@ def ask(
 @app.command()
 def chat(
     user_id: str = typer.Option("cli_user", "--user-id", "-u", help="User ID for request context"),
-    conversation_id: Optional[str] = typer.Option(
+    conversation_id: str | None = typer.Option(
         None,
         "--conversation-id",
         "-c",
@@ -514,13 +512,11 @@ def mcp() -> None:
 
     Cursor: Settings → MCP → Add server → paste the same block.
     """
-    import asyncio
-    from rich.console import Console as StderrConsole
     from agent.mcp.server import serve
 
     # IMPORTANT: stdout is the MCP JSON-RPC wire — ALL human-readable output
     # MUST go to stderr so it doesn't corrupt the protocol framing.
-    err_console = StderrConsole(stderr=True)
+    err_console = Console(stderr=True)
     err_console.print(
         Panel(
             "[bold]Fortio MCP Server[/bold]\n\n"

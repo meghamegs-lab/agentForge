@@ -79,7 +79,7 @@ class MarketDataClient:
         results = await asyncio.gather(*[self.get_quote(s) for s in symbols])
         return {
             "status": "ok",
-            "quotes": {s: r for s, r in zip(symbols, results)},
+            "quotes": {s: r for s, r in zip(symbols, results, strict=False)},
             "data_timestamp": datetime.now(UTC).isoformat(),
             "source": "Yahoo Finance (via yfinance)",
         }
