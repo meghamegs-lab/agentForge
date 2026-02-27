@@ -5,6 +5,7 @@ Multi-step: current holdings + benchmark regime + sector market data →
 maps YOUR specific holdings to macro themes.
 Standout: Generic macro insight applied to your actual portfolio — not generic advice.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -18,79 +19,88 @@ from agent.clients.ghostfolio import GhostfolioError, get_shared_client
 SECTOR_MACRO_SENSITIVITY: dict[str, dict[str, str]] = {
     "Technology": {
         "rising_rates": "NEGATIVE — growth stocks hurt by higher discount rates",
-        "recession":    "MIXED — cloud/SaaS defensive; hardware/semis cyclical",
-        "inflation":    "NEGATIVE — high valuations compressed by inflation",
-        "bull_market":  "POSITIVE — leads in risk-on environments",
+        "recession": "MIXED — cloud/SaaS defensive; hardware/semis cyclical",
+        "inflation": "NEGATIVE — high valuations compressed by inflation",
+        "bull_market": "POSITIVE — leads in risk-on environments",
     },
     "Financial Services": {
         "rising_rates": "POSITIVE — net interest margin expands",
-        "recession":    "NEGATIVE — loan defaults rise",
-        "inflation":    "MIXED — can pass through but credit risk rises",
-        "bull_market":  "POSITIVE — benefits from economic expansion",
+        "recession": "NEGATIVE — loan defaults rise",
+        "inflation": "MIXED — can pass through but credit risk rises",
+        "bull_market": "POSITIVE — benefits from economic expansion",
     },
     "Healthcare": {
         "rising_rates": "NEUTRAL — defensive, less rate-sensitive",
-        "recession":    "POSITIVE — defensive sector, demand inelastic",
-        "inflation":    "MIXED — pricing power but cost pressures",
-        "bull_market":  "NEUTRAL — lags in strong risk-on markets",
+        "recession": "POSITIVE — defensive sector, demand inelastic",
+        "inflation": "MIXED — pricing power but cost pressures",
+        "bull_market": "NEUTRAL — lags in strong risk-on markets",
     },
     "Consumer Defensive": {
         "rising_rates": "NEUTRAL — dividend yield less attractive vs bonds",
-        "recession":    "POSITIVE — consumer staples are recession-resistant",
-        "inflation":    "MIXED — some pricing power, margin pressure",
-        "bull_market":  "NEUTRAL/NEGATIVE — lags in bull markets",
+        "recession": "POSITIVE — consumer staples are recession-resistant",
+        "inflation": "MIXED — some pricing power, margin pressure",
+        "bull_market": "NEUTRAL/NEGATIVE — lags in bull markets",
     },
     "Energy": {
         "rising_rates": "NEUTRAL — commodity prices dominate",
-        "recession":    "NEGATIVE — energy demand falls",
-        "inflation":    "POSITIVE — energy IS inflation; commodity hedge",
-        "bull_market":  "POSITIVE — demand rises with economic growth",
+        "recession": "NEGATIVE — energy demand falls",
+        "inflation": "POSITIVE — energy IS inflation; commodity hedge",
+        "bull_market": "POSITIVE — demand rises with economic growth",
     },
     "Real Estate": {
         "rising_rates": "NEGATIVE — REITs hit hard by rate rises",
-        "recession":    "NEGATIVE — commercial RE suffers",
-        "inflation":    "POSITIVE — real assets hedge inflation long-term",
-        "bull_market":  "NEUTRAL — depends on sub-sector",
+        "recession": "NEGATIVE — commercial RE suffers",
+        "inflation": "POSITIVE — real assets hedge inflation long-term",
+        "bull_market": "NEUTRAL — depends on sub-sector",
     },
     "Industrials": {
         "rising_rates": "NEUTRAL — moderately sensitive",
-        "recession":    "NEGATIVE — capital spending falls",
-        "inflation":    "MIXED — can pass through costs if demand holds",
-        "bull_market":  "POSITIVE — benefits from expansion",
+        "recession": "NEGATIVE — capital spending falls",
+        "inflation": "MIXED — can pass through costs if demand holds",
+        "bull_market": "POSITIVE — benefits from expansion",
     },
     "Communication Services": {
         "rising_rates": "NEGATIVE — high-duration growth names suffer",
-        "recession":    "MIXED — advertising cyclical; telecom defensive",
-        "inflation":    "NEUTRAL",
-        "bull_market":  "POSITIVE",
+        "recession": "MIXED — advertising cyclical; telecom defensive",
+        "inflation": "NEUTRAL",
+        "bull_market": "POSITIVE",
     },
     "Consumer Cyclical": {
         "rising_rates": "NEGATIVE — consumer borrowing costs rise",
-        "recession":    "NEGATIVE — discretionary spending falls first",
-        "inflation":    "NEGATIVE — purchasing power erosion",
-        "bull_market":  "POSITIVE — outperforms in strong economy",
+        "recession": "NEGATIVE — discretionary spending falls first",
+        "inflation": "NEGATIVE — purchasing power erosion",
+        "bull_market": "POSITIVE — outperforms in strong economy",
     },
     "Basic Materials": {
         "rising_rates": "NEUTRAL",
-        "recession":    "NEGATIVE — industrial demand falls",
-        "inflation":    "POSITIVE — commodity prices rise",
-        "bull_market":  "POSITIVE",
+        "recession": "NEGATIVE — industrial demand falls",
+        "inflation": "POSITIVE — commodity prices rise",
+        "bull_market": "POSITIVE",
     },
     "Utilities": {
         "rising_rates": "NEGATIVE — bond proxy, hurt by rate rises",
-        "recession":    "POSITIVE — defensive, regulated revenue",
-        "inflation":    "MIXED — regulated pricing limits pass-through",
-        "bull_market":  "NEUTRAL/NEGATIVE — lags risk-on",
+        "recession": "POSITIVE — defensive, regulated revenue",
+        "inflation": "MIXED — regulated pricing limits pass-through",
+        "bull_market": "NEUTRAL/NEGATIVE — lags risk-on",
     },
 }
 
 _VALID_THEMES = frozenset({"rising_rates", "recession", "inflation", "bull_market"})
 
 _HEDGES_MAP: dict[str, list[str]] = {
-    "rising_rates": ["SCHD (dividend value ETF)", "BRK.B (financials/value)", "SHV (short-term treasuries)"],
-    "recession":    ["VHT (healthcare ETF)", "XLP (consumer staples)", "GLD (gold)"],
-    "inflation":    ["TIPS (inflation-protected bonds)", "GLD (gold)", "VNQ (REITs)", "DJP (commodities)"],
-    "bull_market":  ["QQQ (tech growth)", "IWM (small caps)", "VWO (emerging markets)"],
+    "rising_rates": [
+        "SCHD (dividend value ETF)",
+        "BRK.B (financials/value)",
+        "SHV (short-term treasuries)",
+    ],
+    "recession": ["VHT (healthcare ETF)", "XLP (consumer staples)", "GLD (gold)"],
+    "inflation": [
+        "TIPS (inflation-protected bonds)",
+        "GLD (gold)",
+        "VNQ (REITs)",
+        "DJP (commodities)",
+    ],
+    "bull_market": ["QQQ (tech growth)", "IWM (small caps)", "VWO (emerging markets)"],
 }
 
 _SENTIMENT_SCORE: dict[str, int] = {"POSITIVE": 1, "NEUTRAL": 0, "MIXED": 0, "NEGATIVE": -1}
@@ -138,7 +148,9 @@ async def _market_context(macro_theme: str) -> dict[str, Any]:
         if not holdings:
             return {"status": "empty", "message": "No holdings to analyse."}
 
-        total_value = sum(h.get("value", 0) or 0 for h in holdings.values())
+        total_value = sum(
+            h.get("valueInBaseCurrency", h.get("value", 0)) or 0 for h in holdings.values()
+        )
 
         # ── Analyse each position ──────────────────────────────────
         position_analyses = []
@@ -146,7 +158,7 @@ async def _market_context(macro_theme: str) -> dict[str, Any]:
         weighted_score = 0.0
 
         for sym, h in holdings.items():
-            val = h.get("value", 0) or 0
+            val = h.get("valueInBaseCurrency", h.get("value", 0)) or 0
             alloc = val / total_value * 100 if total_value > 0 else 0
             sectors = h.get("sectors", [])
 
@@ -157,12 +169,14 @@ async def _market_context(macro_theme: str) -> dict[str, Any]:
                 macro_map = SECTOR_MACRO_SENSITIVITY.get(sname, {})
                 sensitivity = macro_map.get(macro_theme, "NEUTRAL — sector not mapped")
                 sentiment = sensitivity.split(" — ")[0].split("/")[0].strip()
-                position_sentiment.append({
-                    "sector": sname,
-                    "sector_weight_in_holding": round(weight * 100, 1),
-                    "sensitivity": sensitivity,
-                    "sentiment": sentiment,
-                })
+                position_sentiment.append(
+                    {
+                        "sector": sname,
+                        "sector_weight_in_holding": round(weight * 100, 1),
+                        "sensitivity": sensitivity,
+                        "sentiment": sentiment,
+                    }
+                )
                 sector_exposure[sname] = sector_exposure.get(sname, 0) + val * weight
 
             # Dominant sentiment for this position
@@ -170,22 +184,26 @@ async def _market_context(macro_theme: str) -> dict[str, Any]:
                 sentiments = [ps["sentiment"] for ps in position_sentiment]
                 neg_count = sentiments.count("NEGATIVE")
                 pos_count = sentiments.count("POSITIVE")
-                dominant = "NEGATIVE" if neg_count > pos_count else (
-                    "POSITIVE" if pos_count > neg_count else "NEUTRAL"
+                dominant = (
+                    "NEGATIVE"
+                    if neg_count > pos_count
+                    else ("POSITIVE" if pos_count > neg_count else "NEUTRAL")
                 )
             else:
                 dominant = "NEUTRAL"
 
             weighted_score += _SENTIMENT_SCORE.get(dominant, 0) * (alloc / 100)
 
-            position_analyses.append({
-                "symbol": sym,
-                "name": h.get("name", sym),
-                "allocation_pct": round(alloc, 2),
-                "value": round(val, 2),
-                "dominant_sentiment": dominant,
-                "sector_analysis": position_sentiment,
-            })
+            position_analyses.append(
+                {
+                    "symbol": sym,
+                    "name": h.get("name", sym),
+                    "allocation_pct": round(alloc, 2),
+                    "value": round(val, 2),
+                    "dominant_sentiment": dominant,
+                    "sector_analysis": position_sentiment,
+                }
+            )
 
         # ── Portfolio-level score ──────────────────────────────────
         portfolio_score = round(weighted_score * 100, 1)  # -100 to +100
@@ -222,9 +240,7 @@ async def _market_context(macro_theme: str) -> dict[str, Any]:
             "suggested_hedges": _HEDGES_MAP.get(macro_theme, []),
             "sector_exposure": {
                 k: round(v / total_value * 100, 2)
-                for k, v in sorted(
-                    sector_exposure.items(), key=lambda x: x[1], reverse=True
-                )
+                for k, v in sorted(sector_exposure.items(), key=lambda x: x[1], reverse=True)
             },
             "low_confidence_note": (
                 "This analysis uses historical sector patterns. "

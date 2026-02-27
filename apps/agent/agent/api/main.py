@@ -16,6 +16,7 @@ Checkpointing:
 Run with:
     uvicorn agent.api.main:app --host 0.0.0.0 --port 8001 --reload
 """
+
 from __future__ import annotations
 
 import json
@@ -56,6 +57,7 @@ log = structlog.get_logger()
 
 
 # ── Lifespan: set up the checkpointer once at startup ─────────────────────────
+
 
 # Initialises the Postgres checkpointer at startup and tears it down cleanly on shutdown.
 @asynccontextmanager
@@ -131,14 +133,15 @@ app = FastAPI(
 # that browsers reject silently. Always list origins explicitly.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,   # configured via CORS_ORIGINS in .env
-    allow_credentials=False,   # Angular HttpClient does not send cookies — no credentials needed
+    allow_origins=settings.cors_origins,  # configured via CORS_ORIGINS in .env
+    allow_credentials=False,  # Angular HttpClient does not send cookies — no credentials needed
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
 
 # Returns {"status": "ok"} — used by Railway / Docker health checks to confirm the service is up.
 @app.get("/health", response_model=HealthResponse)

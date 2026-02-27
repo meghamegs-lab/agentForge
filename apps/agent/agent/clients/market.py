@@ -8,6 +8,7 @@ Implementation note
 yfinance is a synchronous library.  To avoid blocking the asyncio event loop,
 all network calls are dispatched to a thread-pool executor via asyncio.to_thread().
 """
+
 from __future__ import annotations
 
 import asyncio

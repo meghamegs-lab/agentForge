@@ -4,6 +4,7 @@ Tool: get_fee_drag_analysis
 Multi-step: transactions (all fees) + performance (gross returns) → computes fee drag %.
 Standout: Expresses fees as % of total returns — no retail tool surfaces this framing.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -51,8 +52,7 @@ async def _fee_drag(date_range: str = "max") -> dict[str, Any]:
         if isinstance(raw_holdings, list):
             raw_holdings = {h.get("symbol", f"pos_{i}"): h for i, h in enumerate(raw_holdings)}
         total_value = sum(
-            h.get("value", 0) or 0
-            for h in raw_holdings.values()
+            h.get("valueInBaseCurrency", h.get("value", 0)) or 0 for h in raw_holdings.values()
         )
 
         # ── Fee aggregation ────────────────────────────────────────
@@ -70,22 +70,21 @@ async def _fee_drag(date_range: str = "max") -> dict[str, Any]:
             fee_by_symbol[sym] = fee_by_symbol.get(sym, 0) + fee
             fee_by_year[year] = fee_by_year.get(year, 0) + fee
 
-        # ── Performance data ───────────────────────────────────────
-        perf = perf_data.get("performance", {}).get(date_range, {})
-        abs_gain = perf.get("absoluteChange", 0) or 0
-        rel_change = perf.get("relativeChange", 0) or 0
-        current_val = perf.get("currentValue", total_value) or total_value
+        # ── Performance data (v2 API returns a flat object for the requested range) ───
+        perf = perf_data.get("performance", {})
+        abs_gain = perf.get("netPerformance", 0) or 0
+        rel_change = perf.get("netPerformancePercentage", 0) or 0
+        current_val = perf.get("currentValueInBaseCurrency", total_value) or total_value
 
         # ── Derived metrics ────────────────────────────────────────
-        gross_gain = abs_gain + total_fees        # what gain would be without fees
+        gross_gain = abs_gain + total_fees  # what gain would be without fees
         fee_drag_pct = (total_fees / gross_gain * 100) if gross_gain > 0 else 0
 
         # Annualised fee rate (fees / avg portfolio value)
         years_of_data = max(len(fee_by_year), 1)
         avg_portfolio = current_val  # simplified; good enough for estimate
         annual_fee_rate = (
-            (total_fees / years_of_data / avg_portfolio * 100)
-            if avg_portfolio > 0 else 0
+            (total_fees / years_of_data / avg_portfolio * 100) if avg_portfolio > 0 else 0
         )
 
         # Fee by symbol sorted
@@ -133,7 +132,8 @@ async def _fee_drag(date_range: str = "max") -> dict[str, Any]:
             "net_return_pct": round(rel_change * 100, 2),
             "gross_return_pct": (
                 round((gross_gain / (current_val - gross_gain)) * 100, 2)
-                if (current_val - gross_gain) > 0 else 0
+                if (current_val - gross_gain) > 0
+                else 0
             ),
             "verdict": verdict,
             "fee_by_symbol": fee_symbols[:10],

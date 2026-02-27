@@ -31,6 +31,7 @@ Claude Desktop config (macOS: ~/Library/Application Support/Claude/claude_deskto
 
 Cursor: Settings → MCP → Add server → paste the same block.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -73,10 +74,11 @@ log = structlog.get_logger()
 # ── Server singleton ───────────────────────────────────────────────────────────
 
 server = Server("fortio")
-_market_client = MarketDataClient()   # mirrors the module-level singleton in market.py
+_market_client = MarketDataClient()  # mirrors the module-level singleton in market.py
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 # Serialises a tool result dict to a single MCP TextContent block for the JSON-RPC response.
 def _ok(data: dict[str, Any]) -> list[types.TextContent]:
@@ -315,6 +317,7 @@ _TOOLS: list[types.Tool] = [
 
 # ── MCP protocol handlers ──────────────────────────────────────────────────────
 
+
 # Advertises all 11 Fortio tools to the MCP host on the list_tools request.
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
@@ -390,6 +393,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 # useful when Claude wants to reason about the portfolio without an explicit
 # tool call, or to "attach" data before a conversation starts.
 
+
 # Advertises the 3 passive portfolio resources (summary, performance, health) to the MCP host.
 @server.list_resources()
 async def list_resources() -> list[types.Resource]:
@@ -439,6 +443,7 @@ async def read_resource(uri: str) -> str:
 # Prompt templates let MCP hosts offer slash-commands or pre-built context
 # to their users.  Claude Desktop shows these in the prompt library.
 
+
 # Advertises the portfolio-analysis prompt template to the MCP host (shown in Claude's prompt library).
 @server.list_prompts()
 async def list_prompts() -> list[types.Prompt]:
@@ -479,11 +484,14 @@ async def get_prompt(
     health = await _scorecard()
 
     focus_instruction = {
-        "risk":        "Focus on concentration risk, sector exposure, and rebalancing needs.",
+        "risk": "Focus on concentration risk, sector exposure, and rebalancing needs.",
         "performance": "Focus on returns, period comparisons, and best/worst performers.",
-        "fees":        "Focus on fee drag, total fees paid, and cost reduction opportunities.",
-        "all":         "Provide a comprehensive analysis covering diversification, performance, fees, and risk.",
-    }.get(focus, "Provide a comprehensive analysis covering diversification, performance, fees, and risk.")
+        "fees": "Focus on fee drag, total fees paid, and cost reduction opportunities.",
+        "all": "Provide a comprehensive analysis covering diversification, performance, fees, and risk.",
+    }.get(
+        focus,
+        "Provide a comprehensive analysis covering diversification, performance, fees, and risk.",
+    )
 
     prompt_text = (
         "You are Fortio, a personal finance assistant connected to Ghostfolio.\n\n"
@@ -508,6 +516,7 @@ async def get_prompt(
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
+
 
 # Starts the MCP server event loop on stdio — blocks until the MCP host disconnects.
 async def serve() -> None:

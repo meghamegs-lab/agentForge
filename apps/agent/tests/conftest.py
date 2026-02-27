@@ -60,24 +60,22 @@ def sample_holdings_response():
 
 @pytest.fixture
 def sample_performance_response():
+    # v2 API returns a flat performance object for the requested ?range= period.
+    # There are no nested period keys (ytd/1y/etc.) — one request = one period.
     return {
         "performance": {
-            "ytd": {
-                "relativeChange": 0.1234,
-                "absoluteChange": 987.65,
-                "currentValue": 8000.00,
-            },
-            "1y": {
-                "relativeChange": 0.2156,
-                "absoluteChange": 1432.10,
-                "currentValue": 8000.00,
-            },
-            "max": {
-                "relativeChange": 0.4521,
-                "absoluteChange": 2450.00,
-                "currentValue": 8000.00,
-            },
-        }
+            "netPerformancePercentage": 0.1234,       # decimal: 0.1234 = 12.34%
+            "netPerformance": 987.65,                  # absolute gain/loss in base currency
+            "currentValueInBaseCurrency": 8000.00,
+            "totalInvestment": 7012.35,
+            "currentNetWorth": 8000.00,
+            "netPerformancePercentageWithCurrencyEffect": 0.1234,
+            "netPerformanceWithCurrencyEffect": 987.65,
+            "totalInvestmentValueWithCurrencyEffect": 7012.35,
+        },
+        "firstOrderDate": "2023-01-15T00:00:00.000Z",
+        "hasErrors": False,
+        "chart": [],
     }
 
 

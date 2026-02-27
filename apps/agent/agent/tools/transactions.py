@@ -3,6 +3,7 @@
 Tool: get_transactions
 Returns transaction history with fee analysis and categorization.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -13,6 +14,7 @@ from langchain_core.tools import tool
 from agent.clients.ghostfolio import GhostfolioError, get_shared_client
 
 # ── Implementation (importable in unit tests without @tool overhead) ──────────
+
 
 # Core logic: fetches Ghostfolio orders, applies optional filters, and summarises total fees by type.
 async def _get_transactions(
@@ -47,8 +49,7 @@ async def _get_transactions(
         # Filter by type if requested
         if transaction_type:
             activities = [
-                a for a in activities
-                if a.get("type", "").upper() == transaction_type.upper()
+                a for a in activities if a.get("type", "").upper() == transaction_type.upper()
             ]
 
         transactions = []
@@ -67,19 +68,21 @@ async def _get_transactions(
             type_counts[tx_type] = type_counts.get(tx_type, 0) + 1
             type_values[tx_type] = type_values.get(tx_type, 0) + total_value
 
-            transactions.append({
-                "id": activity.get("id", ""),
-                "date": activity.get("date", ""),
-                "type": tx_type,
-                "symbol": activity.get("SymbolProfile", {}).get("symbol", ""),
-                "name": activity.get("SymbolProfile", {}).get("name", ""),
-                "quantity": quantity,
-                "unit_price": unit_price,
-                "total_value": round(total_value, 2),
-                "fee": fee,
-                "currency": activity.get("currency", "USD"),
-                "account": activity.get("Account", {}).get("name", ""),
-            })
+            transactions.append(
+                {
+                    "id": activity.get("id", ""),
+                    "date": activity.get("date", ""),
+                    "type": tx_type,
+                    "symbol": activity.get("SymbolProfile", {}).get("symbol", ""),
+                    "name": activity.get("SymbolProfile", {}).get("name", ""),
+                    "quantity": quantity,
+                    "unit_price": unit_price,
+                    "total_value": round(total_value, 2),
+                    "fee": fee,
+                    "currency": activity.get("currency", "USD"),
+                    "account": activity.get("account", {}).get("name", ""),
+                }
+            )
 
         # Sort by date descending (newest first)
         transactions.sort(key=lambda x: x["date"], reverse=True)
@@ -106,6 +109,7 @@ async def _get_transactions(
 
 
 # ── LangChain Tool (used by the graph) ────────────────────────────────────────
+
 
 # LangChain @tool wrapper — delegates to _get_transactions; used by the agent graph.
 @tool

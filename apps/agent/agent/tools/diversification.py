@@ -3,6 +3,7 @@
 Tool: analyze_diversification
 Computes sector, geography, asset class breakdown and risk flags.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -14,6 +15,7 @@ from agent.clients.ghostfolio import GhostfolioError, get_shared_client
 from agent.config import settings
 
 # ── Implementation (importable in unit tests without @tool overhead) ──────────
+
 
 # Core logic: aggregates sector/geography/asset-class weights and computes a 0-100 diversification score.
 async def _analyze_diversification() -> dict[str, Any]:
@@ -37,7 +39,9 @@ async def _analyze_diversification() -> dict[str, Any]:
                 "data_timestamp": datetime.now(UTC).isoformat(),
             }
 
-        total_value = sum(h.get("value", 0) or 0 for h in holdings_list)
+        total_value = sum(
+            h.get("valueInBaseCurrency", h.get("value", 0)) or 0 for h in holdings_list
+        )
         if total_value == 0:
             return {
                 "status": "empty",
@@ -52,21 +56,23 @@ async def _analyze_diversification() -> dict[str, Any]:
 
         for holding in holdings_list:
             symbol = holding.get("symbol", "UNKNOWN")
-            value = holding.get("value", 0) or 0
+            value = holding.get("valueInBaseCurrency", holding.get("value", 0)) or 0
             allocation = value / total_value
 
             # Flag individual concentration
             if allocation >= settings.portfolio_concentration_threshold:
-                concentration_flags.append({
-                    "symbol": symbol,
-                    "name": holding.get("name", symbol),
-                    "allocation_percent": round(allocation * 100, 2),
-                    "severity": "HIGH" if allocation >= 0.35 else "MEDIUM",
-                    "message": (
-                        f"{symbol} represents {round(allocation * 100, 1)}% of portfolio "
-                        "— consider diversifying"
-                    ),
-                })
+                concentration_flags.append(
+                    {
+                        "symbol": symbol,
+                        "name": holding.get("name", symbol),
+                        "allocation_percent": round(allocation * 100, 2),
+                        "severity": "HIGH" if allocation >= 0.35 else "MEDIUM",
+                        "message": (
+                            f"{symbol} represents {round(allocation * 100, 1)}% of portfolio "
+                            "— consider diversifying"
+                        ),
+                    }
+                )
 
             # Aggregate sectors
             for sector_obj in holding.get("sectors", []):
@@ -93,15 +99,21 @@ async def _analyze_diversification() -> dict[str, Any]:
 
         # Diversification score (0-100): penalise concentration and few positions
         max_position_pct = max(
-            (h.get("value", 0) or 0) / total_value * 100
+            (h.get("valueInBaseCurrency", h.get("value", 0)) or 0) / total_value * 100
             for h in holdings_list
         )
         num_positions = len(holdings_list)
-        score = max(0, min(100, int(
-            100
-            - max(0, max_position_pct - 10) * 2     # penalise >10% positions
-            - max(0, 10 - num_positions) * 3          # penalise fewer than 10 positions
-        )))
+        score = max(
+            0,
+            min(
+                100,
+                int(
+                    100
+                    - max(0, max_position_pct - 10) * 2  # penalise >10% positions
+                    - max(0, 10 - num_positions) * 3  # penalise fewer than 10 positions
+                ),
+            ),
+        )
 
         return {
             "status": "ok",
@@ -109,9 +121,7 @@ async def _analyze_diversification() -> dict[str, Any]:
             "total_value": round(total_value, 2),
             "diversification_score": score,
             "diversification_grade": (
-                "A" if score >= 80 else
-                "B" if score >= 65 else
-                "C" if score >= 50 else "D"
+                "A" if score >= 80 else "B" if score >= 65 else "C" if score >= 50 else "D"
             ),
             "sector_breakdown": to_pct_list(sectors),
             "geographic_breakdown": to_pct_list(countries),
@@ -133,6 +143,7 @@ async def _analyze_diversification() -> dict[str, Any]:
 
 
 # ── LangChain Tool (used by the graph) ────────────────────────────────────────
+
 
 # LangChain @tool wrapper — delegates to _analyze_diversification; used by the agent graph.
 @tool

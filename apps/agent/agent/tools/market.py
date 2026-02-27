@@ -3,6 +3,7 @@
 Tool: get_market_data
 Fetches current market data for one or more symbols using yfinance.
 """
+
 from __future__ import annotations
 
 from typing import Any

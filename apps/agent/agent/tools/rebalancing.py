@@ -4,6 +4,7 @@ Tool: get_rebalancing_plan
 Multi-step: holdings + market prices → computes exact buy/sell dollar amounts per position.
 Standout: Returns specific dollar amounts to buy/sell — not just "you're overweight in X".
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -73,7 +74,9 @@ async def _rebalancing_plan(
         if not holdings:
             return {"status": "empty", "message": "No holdings to rebalance."}
 
-        total_value = sum(h.get("value", 0) or 0 for h in holdings.values())
+        total_value = sum(
+            h.get("valueInBaseCurrency", h.get("value", 0)) or 0 for h in holdings.values()
+        )
         if total_value == 0:
             return {"status": "empty", "message": "Portfolio has no value."}
 
@@ -96,16 +99,16 @@ async def _rebalancing_plan(
 
         for sym, h in holdings.items():
             bucket = classify(h)
-            val = h.get("value", 0) or 0
+            val = h.get("valueInBaseCurrency", h.get("value", 0)) or 0
             buckets[bucket] = buckets.get(bucket, 0) + val
             position_buckets[sym] = bucket
 
         # ── Target vs current ──────────────────────────────────────
         targets = {
-            "US_EQUITY":   tgt_us * total_value,
+            "US_EQUITY": tgt_us * total_value,
             "INTL_EQUITY": tgt_intl * total_value,
-            "BONDS":       tgt_bonds * total_value,
-            "CASH":        tgt_cash * total_value,
+            "BONDS": tgt_bonds * total_value,
+            "CASH": tgt_cash * total_value,
         }
         deltas = {b: targets[b] - buckets.get(b, 0) for b in targets}
 
@@ -113,10 +116,10 @@ async def _rebalancing_plan(
         trades = []
         for sym, h in sorted(
             holdings.items(),
-            key=lambda x: x[1].get("value", 0) or 0,
+            key=lambda x: x[1].get("valueInBaseCurrency", x[1].get("value", 0)) or 0,
             reverse=True,
         ):
-            val = h.get("value", 0) or 0
+            val = h.get("valueInBaseCurrency", h.get("value", 0)) or 0
             bucket = position_buckets[sym]
             alloc_pct = val / total_value * 100
             delta = deltas.get(bucket, 0)
@@ -125,7 +128,7 @@ async def _rebalancing_plan(
             bucket_total = buckets.get(bucket, 0)
             trade_amount = (delta * val / bucket_total) if bucket_total > 0 else 0
 
-            if abs(trade_amount) < 50:   # ignore tiny trades
+            if abs(trade_amount) < 50:  # ignore tiny trades
                 continue
 
             # Fetch current price for share count estimate
@@ -133,22 +136,24 @@ async def _rebalancing_plan(
             price = price_data.get("current_price") if price_data.get("status") == "ok" else None
             shares_estimate = round(abs(trade_amount) / price, 2) if price else None
 
-            trades.append({
-                "symbol":          sym,
-                "name":            h.get("name", sym),
-                "bucket":          bucket,
-                "current_value":   round(val, 2),
-                "current_pct":     round(alloc_pct, 2),
-                "action":          "SELL" if trade_amount < 0 else "BUY",
-                "dollar_amount":   round(abs(trade_amount), 2),
-                "shares_estimate": shares_estimate,
-                "current_price":   price,
-                "note": (
-                    "Consider tax-loss harvest if at a loss"
-                    if trade_amount < 0
-                    else "Add via new contribution if possible to avoid capital gains"
-                ),
-            })
+            trades.append(
+                {
+                    "symbol": sym,
+                    "name": h.get("name", sym),
+                    "bucket": bucket,
+                    "current_value": round(val, 2),
+                    "current_pct": round(alloc_pct, 2),
+                    "action": "SELL" if trade_amount < 0 else "BUY",
+                    "dollar_amount": round(abs(trade_amount), 2),
+                    "shares_estimate": shares_estimate,
+                    "current_price": price,
+                    "note": (
+                        "Consider tax-loss harvest if at a loss"
+                        if trade_amount < 0
+                        else "Add via new contribution if possible to avoid capital gains"
+                    ),
+                }
+            )
 
         trades.sort(key=lambda x: x["dollar_amount"], reverse=True)
         total_trade_value = sum(t["dollar_amount"] for t in trades)
@@ -161,10 +166,10 @@ async def _rebalancing_plan(
                 for b, v in buckets.items()
             },
             "target_allocation": {
-                "US_EQUITY":   round(tgt_us * 100, 1),
+                "US_EQUITY": round(tgt_us * 100, 1),
                 "INTL_EQUITY": round(tgt_intl * 100, 1),
-                "BONDS":       round(tgt_bonds * 100, 1),
-                "CASH":        round(tgt_cash * 100, 1),
+                "BONDS": round(tgt_bonds * 100, 1),
+                "CASH": round(tgt_cash * 100, 1),
             },
             "trades": trades,
             "summary": {
