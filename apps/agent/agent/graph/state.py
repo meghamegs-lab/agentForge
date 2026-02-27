@@ -1,3 +1,4 @@
+# Defines AgentState — the shared TypedDict that flows through every LangGraph node.
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -17,3 +18,6 @@ class AgentState(TypedDict):
     user_id: str                                # For multi-user isolation
     final_response: str                         # Verified final response text
     should_escalate: bool                       # Human-in-the-loop trigger
+    # ── Multi-turn context awareness ──────────────────────────────────────────
+    turn_number: int                            # 1-indexed; incremented each reasoning step; persisted by checkpointer
+    context_entities: dict[str, list[str]]      # Entities tracked across turns: {"tickers": [...], "sectors": [...]}

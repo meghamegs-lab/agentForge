@@ -1,11 +1,14 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.backends.legacy:build"
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "fortio-agent"
 version = "0.1.0"
 requires-python = ">=3.12"
+
+[project.scripts]
+fortio = "agent.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -18,8 +21,10 @@ omit = [
     "agent/graph/graph.py",
     "agent/graph/state.py",
     "agent/api/main.py",
-    "agent/ui/chainlit_app.py",
+    "agent/cli.py",
     "agent/prompts.py",
+    "agent/mcp/server.py",
+    "tests/eval/ls_evals.py",
 ]
 
 [tool.coverage.report]

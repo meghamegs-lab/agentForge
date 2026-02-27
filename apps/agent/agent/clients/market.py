@@ -1,3 +1,4 @@
+# Async market-data client wrapping yfinance; all blocking calls are dispatched to a thread pool.
 """
 Market data client using yfinance.
 Returns structured dicts with timestamps for freshness checking.
@@ -21,6 +22,7 @@ class MarketDataClient:
 
     # ── internal sync helpers (run in thread pool) ────────────────────────────
 
+    # Synchronous yfinance fetch for one symbol (price, 52w range, market cap) — runs in thread pool.
     def _fetch_quote_sync(self, symbol: str) -> dict[str, Any]:
         """Synchronous yfinance fetch — called from asyncio.to_thread()."""
         try:
@@ -51,6 +53,7 @@ class MarketDataClient:
                 "market_cap": getattr(info, "market_cap", None),
                 "volume": getattr(info, "three_month_average_volume", None),
                 "data_timestamp": datetime.now(UTC).isoformat(),
+                "source": "Yahoo Finance (via yfinance)",
             }
         except Exception as e:
             return {
@@ -65,10 +68,12 @@ class MarketDataClient:
 
     # ── public async API ──────────────────────────────────────────────────────
 
+    # Async wrapper that offloads _fetch_quote_sync to a thread pool via asyncio.to_thread().
     async def get_quote(self, symbol: str) -> dict[str, Any]:
         """Async get_quote — runs yfinance in thread pool to avoid blocking."""
         return await asyncio.to_thread(self._fetch_quote_sync, symbol)
 
+    # Concurrently fetches quotes for multiple symbols and combines the results into a single dict.
     async def get_batch_quotes(self, symbols: list[str]) -> dict[str, Any]:
         """Async batch — fetches all symbols concurrently in the thread pool."""
         results = await asyncio.gather(*[self.get_quote(s) for s in symbols])
@@ -76,4 +81,5 @@ class MarketDataClient:
             "status": "ok",
             "quotes": {s: r for s, r in zip(symbols, results)},
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Yahoo Finance (via yfinance)",
         }

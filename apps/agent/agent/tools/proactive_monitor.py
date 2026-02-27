@@ -1,6 +1,7 @@
+# LangChain tool that checks for new portfolio risks since the last session and surfaces allocation changes.
 """
 Tool: get_proactive_risk_monitor
-Standout feature: fires AUTOMATICALLY on every Chainlit session start via on_chat_start.
+Standout feature: fires AUTOMATICALLY on session start.
 Checks for new risks since last session — tells you what changed, not just current state.
 """
 from __future__ import annotations
@@ -29,7 +30,7 @@ async def get_proactive_risk_monitor(previous_snapshot_json: str = "") -> dict[s
     last logged in — not just the current state of your portfolio.
 
     Use this:
-    - AUTOMATICALLY on every Chainlit on_chat_start (pass previous snapshot from session store)
+    - AUTOMATICALLY on every session start (pass previous snapshot from session store)
     - When user asks 'Any risks I should know about?'
     - When user asks 'What changed since last time?'
     - When user asks 'Do I have any urgent alerts?'
@@ -45,12 +46,19 @@ async def get_proactive_risk_monitor(previous_snapshot_json: str = "") -> dict[s
     return await _proactive_monitor(previous_snapshot_json)
 
 
+# Core logic: compares current vs previous snapshot to detect concentration breaches and allocation shifts.
 async def _proactive_monitor(prev_snap_json: str = "") -> dict[str, Any]:
     try:
         client = get_shared_client()
         holdings_data = await client.get_portfolio_holdings()
 
-        holdings = holdings_data.get("holdings", {})
+        # Normalise: Ghostfolio can return holdings as a list OR a dict keyed by symbol
+        raw = holdings_data.get("holdings", {})
+        if isinstance(raw, list):
+            holdings = {h.get("symbol", f"pos_{i}"): h for i, h in enumerate(raw)}
+        else:
+            holdings = raw or {}
+
         if not holdings:
             return {
                 "status": "empty",
@@ -204,6 +212,7 @@ async def _proactive_monitor(prev_snap_json: str = "") -> dict[str, Any]:
             "position_count": len(holdings),
             "current_snapshot": current_snapshot,  # caller should save for next session
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio",
         }
 
     except GhostfolioError as e:

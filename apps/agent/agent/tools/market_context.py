@@ -1,3 +1,4 @@
+# LangChain tool that maps the user's holdings to macro-theme sensitivity (rising rates, recession, etc.).
 """
 Tool: get_market_context_overlay
 Multi-step: current holdings + benchmark regime + sector market data →
@@ -118,6 +119,7 @@ async def get_market_context_overlay(macro_theme: str = "rising_rates") -> dict[
     return await _market_context(macro_theme)
 
 
+# Core logic: scores each holding by sector sensitivity to the chosen macro theme and computes a portfolio score.
 async def _market_context(macro_theme: str) -> dict[str, Any]:
     if macro_theme not in _VALID_THEMES:
         macro_theme = "rising_rates"
@@ -126,7 +128,13 @@ async def _market_context(macro_theme: str) -> dict[str, Any]:
         client = get_shared_client()
         data = await client.get_portfolio_holdings()
 
-        holdings = data.get("holdings", {})
+        # Normalise: Ghostfolio can return holdings as a list OR a dict keyed by symbol
+        raw = data.get("holdings", {})
+        if isinstance(raw, list):
+            holdings = {h.get("symbol", f"pos_{i}"): h for i, h in enumerate(raw)}
+        else:
+            holdings = raw or {}
+
         if not holdings:
             return {"status": "empty", "message": "No holdings to analyse."}
 
@@ -223,6 +231,7 @@ async def _market_context(macro_theme: str) -> dict[str, Any]:
                 "Macro outcomes are uncertain — treat as directional guidance only."
             ),
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio (holdings) + built-in sector macro sensitivity model",
         }
 
     except GhostfolioError as e:

@@ -167,13 +167,10 @@ jobs:
         continue-on-error: true # advisory until DB mock is fully set up
 
   # ── Job 3: Deploy Fortio Agent → Railway ──────────────────────────────────
-  # TEMPORARILY DISABLED — re-enable once Railway service is stable.
-  # To re-enable: remove the `if: false` condition below.
-  #
   # Runs ONLY when:
   #   1. apps/agent/** files changed   (checked via `changes` job)
   #   2. test-agent passed             (enforced by `needs:`)
-  #   3. This is a push to main        (not a PR, not dev-mvp)
+  #   3. This is a push to main        (not a PR)
   #
   # Independent of Ghostfolio — a Ghostfolio lint failure won't block this.
   #
@@ -188,7 +185,10 @@ jobs:
     name: 'Deploy Fortio Agent → Railway'
     runs-on: ubuntu-latest
     needs: [changes, test-agent]
-    if: false # DISABLED — re-enable once Railway service is configured correctly
+    if: |
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push' &&
+      needs.changes.outputs.agent == 'true'
 
     environment:
       name: production

@@ -1,3 +1,4 @@
+# LangChain tool that synthesises holdings, performance, and diversification into an A–D health grade.
 """
 Tool: get_portfolio_health_scorecard
 Multi-step: calls holdings + performance + diversification, then synthesises an A-D grade.
@@ -33,6 +34,7 @@ async def get_portfolio_health_scorecard() -> dict[str, Any]:
     return await _scorecard()
 
 
+# Core logic: scores the portfolio on concentration, diversity, and performance to produce an A–D grade.
 async def _scorecard() -> dict[str, Any]:
     try:
         client = get_shared_client()
@@ -40,7 +42,13 @@ async def _scorecard() -> dict[str, Any]:
         perf_data = await client.get_portfolio_performance("ytd")
         perf_1y = await client.get_portfolio_performance("1y")
 
-        holdings = holdings_data.get("holdings", {})
+        # Normalise: Ghostfolio can return holdings as a list OR a dict keyed by symbol
+        raw = holdings_data.get("holdings", {})
+        if isinstance(raw, list):
+            holdings = {h.get("symbol", f"pos_{i}"): h for i, h in enumerate(raw)}
+        else:
+            holdings = raw or {}
+
         if not holdings:
             return {
                 "status": "empty",
@@ -195,6 +203,7 @@ async def _scorecard() -> dict[str, Any]:
             "risk_flags": flags,
             "action_items": sorted(actions, key=lambda x: x["priority"]),
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio",
         }
 
     except GhostfolioError as e:

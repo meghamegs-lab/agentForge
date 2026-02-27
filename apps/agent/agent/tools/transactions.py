@@ -1,3 +1,4 @@
+# LangChain tool that retrieves transaction history with fee analysis and type categorisation.
 """
 Tool: get_transactions
 Returns transaction history with fee analysis and categorization.
@@ -13,6 +14,7 @@ from agent.clients.ghostfolio import GhostfolioError, get_shared_client
 
 # ── Implementation (importable in unit tests without @tool overhead) ──────────
 
+# Core logic: fetches Ghostfolio orders, applies optional filters, and summarises total fees by type.
 async def _get_transactions(
     account_id: str = "",
     date_from: str = "",
@@ -94,6 +96,7 @@ async def _get_transactions(
                 },
             },
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio",
         }
 
     except GhostfolioError as e:
@@ -104,6 +107,7 @@ async def _get_transactions(
 
 # ── LangChain Tool (used by the graph) ────────────────────────────────────────
 
+# LangChain @tool wrapper — delegates to _get_transactions; used by the agent graph.
 @tool
 async def get_transactions(
     account_id: str = "",

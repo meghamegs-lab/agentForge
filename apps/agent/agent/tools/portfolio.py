@@ -1,3 +1,4 @@
+# LangChain tool that fetches current holdings, allocation percentages, and total value from Ghostfolio.
 """
 Tool: get_portfolio_summary
 Returns current holdings, allocation percentages, and total portfolio value.
@@ -13,6 +14,7 @@ from agent.clients.ghostfolio import GhostfolioError, get_shared_client
 
 # ── Implementation (importable in unit tests without @tool overhead) ──────────
 
+# Core logic: normalises the Ghostfolio holdings payload and computes per-position allocation %.
 async def _get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
     """
     Core logic for get_portfolio_summary.
@@ -73,6 +75,7 @@ async def _get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
             "position_count": len(processed),
             "holdings": processed,
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio",
         }
 
     except GhostfolioError as e:
@@ -92,6 +95,7 @@ async def _get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
 
 # ── LangChain Tool (used by the graph) ────────────────────────────────────────
 
+# LangChain @tool wrapper — delegates to _get_portfolio_summary; used by the agent graph.
 @tool
 async def get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
     """

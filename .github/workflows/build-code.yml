@@ -2,6 +2,17 @@ name: Build code
 
 on:
   pull_request:
+    paths:
+      - 'apps/api/**'
+      - 'apps/client/**'
+      - 'libs/**'
+      - 'prisma/**'
+      - 'Dockerfile'
+      - 'docker/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'nx.json'
+      - 'tsconfig.base.json'
   workflow_dispatch:
 
 permissions:

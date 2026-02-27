@@ -1,3 +1,4 @@
+# Five-stage verification pipeline: disclaimer → hallucination → freshness → concentration → confidence.
 """
 Verification Layer — All 5 production checks for the finance agent.
 
@@ -34,6 +35,7 @@ DISCLAIMER_TEXT = (
 )
 
 
+# Appends a financial disclaimer to the response when investment-advice language is detected.
 def check_disclaimer(
     response: str, tool_results: list[dict]
 ) -> tuple[str, list[VerificationFlag]]:
@@ -59,6 +61,7 @@ def check_disclaimer(
 
 # ─── 2. Hallucination Guard ───────────────────────────────────────────────────
 
+# Extracts all numeric values (prices, percentages, dollar amounts) from a text string using regex.
 def _extract_numbers(text: str) -> set[str]:
     """Extract all numeric values from text (prices, percentages, dollar amounts)."""
     # Match: $1,234.56 | 12.34% | 1234.56 | 1,234
@@ -68,12 +71,14 @@ def _extract_numbers(text: str) -> set[str]:
     return {re.sub(r"[$,%]", "", m).replace(",", "") for m in matches if len(m) > 1}
 
 
+# Flattens all tool result dicts to JSON and extracts every numeric value from them.
 def _extract_numbers_from_tool_results(tool_results: list[dict]) -> set[str]:
     """Flatten all numeric values from tool result dicts."""
     text = json.dumps(tool_results)
     return _extract_numbers(text)
 
 
+# Returns True if every tool result carries an error/failure status — meaning no real data was fetched.
 def _all_tools_failed(tool_results: list[dict]) -> bool:
     """
     Return True if every tool result has a failure status
@@ -85,6 +90,7 @@ def _all_tools_failed(tool_results: list[dict]) -> bool:
     )
 
 
+# Flags financial numbers in the response that cannot be traced back to any tool result.
 def check_hallucination(
     response: str, tool_results: list[dict]
 ) -> tuple[str, list[VerificationFlag]]:
@@ -101,16 +107,20 @@ def check_hallucination(
     flags: list[VerificationFlag] = []
 
     if not tool_results:
-        # No tools were called — any financial number is fabricated
+        # No tools were called — advisory / opinion answers are normal here.
+        # Flag any financial numbers as unverified but do NOT escalate (MEDIUM,
+        # not HIGH): escalation is reserved for the genuinely dangerous case
+        # where tools were called, all failed, yet the LLM still cites specifics.
         nums_in_response = _extract_numbers(response)
         financial_nums = {n for n in nums_in_response if _looks_financial(n)}
         if financial_nums:
             flags.append({
                 "type": "POTENTIAL_HALLUCINATION",
-                "severity": "HIGH",
+                "severity": "MEDIUM",
                 "message": (
                     f"Response contains financial numbers {financial_nums} "
-                    "but no tool was called to retrieve data"
+                    "but no tool was called to retrieve data — "
+                    "treat as general opinion, not verified portfolio data"
                 ),
             })
         return response, flags
@@ -152,6 +162,7 @@ def check_hallucination(
     return response, flags
 
 
+# Returns True if the number string represents a meaningful financial value (not a year or tiny count).
 def _looks_financial(num_str: str) -> bool:
     """Return True if the number looks like a financial value worth flagging."""
     try:
@@ -164,8 +175,50 @@ def _looks_financial(num_str: str) -> bool:
         return False
 
 
+# ─── UUID / Display-name helpers ─────────────────────────────────────────────
+
+# Matches standard UUID v4 — used to detect Ghostfolio internal IDs used as symbols.
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+def _display_name(holding: dict) -> str:
+    """
+    Return the most human-readable identifier for a holding.
+
+    Ghostfolio uses UUIDs as the 'symbol' field for manually-entered assets,
+    cash positions, and unlisted holdings. This helper prefers the 'name' field
+    and falls back gracefully so users never see a raw UUID in a warning.
+
+    Output format:
+      - Real ticker + name:  "Apple Inc. (AAPL)"
+      - UUID symbol + name:  "Cash EUR"
+      - Real ticker only:    "AAPL"
+      - Both UUID / missing: "Unknown Asset"
+    """
+    symbol = holding.get("symbol", "")
+    name = holding.get("name", "")
+    symbol_is_uuid = bool(symbol and _UUID_RE.match(symbol))
+    name_is_uuid = bool(name and _UUID_RE.match(name))
+
+    has_real_symbol = bool(symbol and not symbol_is_uuid)
+    has_real_name = bool(name and not name_is_uuid)
+
+    if has_real_name and has_real_symbol:
+        return f"{name} ({symbol})"
+    if has_real_name:
+        return name
+    if has_real_symbol:
+        return symbol
+    # Last resort — both are UUIDs or empty
+    return name or symbol or "Unknown Asset"
+
+
 # ─── 3. Data Freshness Check ──────────────────────────────────────────────────
 
+# Warns when any tool result's data_timestamp is older than the configured freshness threshold.
 def check_freshness(
     response: str, tool_results: list[dict]
 ) -> tuple[str, list[VerificationFlag]]:
@@ -219,6 +272,7 @@ def check_freshness(
 
 # ─── 4. Concentration Warning ─────────────────────────────────────────────────
 
+# Appends a concentration warning to the response if any portfolio position exceeds the threshold.
 def check_concentration(
     response: str, tool_results: list[dict]
 ) -> tuple[str, list[VerificationFlag]]:
@@ -245,16 +299,17 @@ def check_concentration(
 
         # From portfolio summary — direct check
         if "holdings" in result:
-            for holding in result.get("holdings", []):
+            for holding in (result.get("holdings") or []):
                 alloc = holding.get("allocation_percent", 0) / 100
                 if alloc >= threshold:
-                    symbol = holding.get("symbol", "Unknown")
+                    display = _display_name(holding)
+                    symbol = holding.get("symbol", "")   # raw key for dedup only
                     msg = (
-                        f"{symbol} is {holding['allocation_percent']}% of your portfolio "
+                        f"{display} is {holding['allocation_percent']}% of your portfolio "
                         f"(above {int(threshold*100)}% threshold)"
                     )
-                    if not any(w.get("symbol") == symbol for w in concentration_warnings):
-                        concentration_warnings.append({"symbol": symbol, "message": msg})
+                    if not any(w.get("_key") == symbol for w in concentration_warnings):
+                        concentration_warnings.append({"_key": symbol, "message": msg})
                         flags.append({
                             "type": "CONCENTRATION_RISK",
                             "severity": "MEDIUM",
@@ -283,7 +338,14 @@ HEDGING_KEYWORDS = {
     "estimate", "may", "might", "could",
 }
 
+SPECULATIVE_KEYWORDS = {
+    "bitcoin", "crypto", "cryptocurrency", "ethereum", "solana", "dogecoin",
+    "nft", "meme stock", "all in", "double down", "yolo", "gamble",
+    "put it all", "everything into",
+}
 
+
+# Scores the agent response as HIGH, MEDIUM, or LOW confidence based on tool usage and response language.
 def check_confidence(
     response: str,
     tool_results: list[dict],
@@ -304,17 +366,18 @@ def check_confidence(
     # Detect prediction language
     has_predictions = any(kw in response_lower for kw in PREDICTION_KEYWORDS)
     has_hedging = any(kw in response_lower for kw in HEDGING_KEYWORDS)
+    has_speculative = any(kw in response_lower for kw in SPECULATIVE_KEYWORDS)
     has_tool_data = len(tool_results) > 0
     is_multi_step = reasoning_steps > 1 or len(tool_results) > 1
 
-    if not has_tool_data or has_predictions:
+    if not has_tool_data or has_predictions or has_speculative:
         confidence = "LOW"
         flags.append({
             "type": "LOW_CONFIDENCE",
             "severity": "INFO",
             "message": (
-                "Response involves predictions or was generated without tool data — "
-                "treat with caution"
+                "Response involves predictions, speculative assets, or was generated "
+                "without tool data — treat with caution"
             ),
         })
     elif is_multi_step or has_hedging:
@@ -327,6 +390,7 @@ def check_confidence(
 
 # ─── Pipeline ─────────────────────────────────────────────────────────────────
 
+# Runs all 5 checks in sequence and returns the final response, consolidated flags, and confidence level.
 def run_verification_pipeline(
     response: str,
     tool_results: list[dict],
@@ -341,6 +405,7 @@ def run_verification_pipeline(
     # 1. Disclaimer
     response, flags = check_disclaimer(response, tool_results)
     all_flags.extend(flags)
+    disclaimer_added = any(f["type"] == "DISCLAIMER_ADDED" for f in flags)
 
     # 2. Hallucination guard
     response, flags = check_hallucination(response, tool_results)
@@ -357,6 +422,20 @@ def run_verification_pipeline(
     # 5. Confidence scoring
     response, flags, confidence = check_confidence(response, tool_results, reasoning_steps)
     all_flags.extend(flags)
+
+    # If investment advice language triggered a disclaimer, confidence must be
+    # LOW regardless of tool data or multi-step reasoning — we are not financial
+    # advisors and any direct recommendation carries inherent uncertainty.
+    if disclaimer_added and confidence != "LOW":
+        confidence = "LOW"
+        all_flags.append({
+            "type": "LOW_CONFIDENCE",
+            "severity": "INFO",
+            "message": (
+                "Response contains investment advice language (disclaimer triggered) — "
+                "confidence downgraded to LOW"
+            ),
+        })
 
     return {
         "response": response,

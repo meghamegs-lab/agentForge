@@ -1,3 +1,4 @@
+# LangChain tool that analyses trade history to detect behavioural patterns and coaching insights.
 """
 Tool: get_transaction_pattern_intelligence
 Multi-step: all transactions + market data for each symbol →
@@ -38,6 +39,7 @@ async def get_transaction_pattern_intelligence() -> dict[str, Any]:
     return await _transaction_patterns()
 
 
+# Core logic: computes churn rate, DCA score, per-symbol P&L, and behavioural pattern flags.
 async def _transaction_patterns() -> dict[str, Any]:
     try:
         client = get_shared_client()
@@ -48,7 +50,12 @@ async def _transaction_patterns() -> dict[str, Any]:
         if not activities:
             return {"status": "empty", "message": "No transactions to analyse."}
 
-        holdings = holdings_data.get("holdings", {})
+        # Normalise: Ghostfolio can return holdings as a list OR a dict keyed by symbol
+        raw = holdings_data.get("holdings", {})
+        if isinstance(raw, list):
+            holdings = {h.get("symbol", f"pos_{i}"): h for i, h in enumerate(raw)}
+        else:
+            holdings = raw or {}
 
         buys = [a for a in activities if a.get("type") == "BUY"]
         sells = [a for a in activities if a.get("type") == "SELL"]
@@ -109,7 +116,7 @@ async def _transaction_patterns() -> dict[str, Any]:
                 if total_qty > 0 else 0
             )
 
-            price_data = _market.get_quote(sym)
+            price_data = await _market.get_quote(sym)
             current_price = (
                 price_data.get("current_price")
                 if price_data.get("status") == "ok" else None
@@ -228,6 +235,7 @@ async def _transaction_patterns() -> dict[str, Any]:
             "behavioural_patterns": patterns,
             "coaching_summary": coaching,
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio (transaction history) + Yahoo Finance (via yfinance) for current prices",
         }
 
     except GhostfolioError as e:
