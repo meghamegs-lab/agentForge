@@ -30,6 +30,18 @@ class GhostfolioError(Exception):
 class GhostfolioClient:
     """Async HTTP client for Ghostfolio REST API."""
 
+    # ── API endpoint paths ────────────────────────────────────────────────────
+    # Centralised here so a Ghostfolio API upgrade only requires changes in
+    # one place. Note: /portfolio/performance moved to v2 in Ghostfolio ≥2.x;
+    # all other endpoints remain on v1.
+    _ENDPOINTS: dict[str, str] = {
+        "auth":        "api/v1/auth/anonymous",
+        "holdings":    "api/v1/portfolio/holdings",
+        "performance": "api/v2/portfolio/performance",  # v2-only endpoint
+        "orders":      "api/v1/order",
+        "public":      "api/v1/public/{access_id}/portfolio",
+    }
+
     def __init__(
         self,
         base_url: str | None = None,
@@ -46,13 +58,23 @@ class GhostfolioClient:
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
         )
 
+    # Builds a full URL from a named endpoint key, with optional path substitutions.
+    def _url(self, key: str, **kwargs: str) -> str:
+        """Return the full URL for a named Ghostfolio endpoint.
+
+        Looks up the path template from _ENDPOINTS, applies any keyword
+        substitutions (e.g. access_id=...), and prepends the configured base URL.
+        """
+        path = self._ENDPOINTS[key].format(**kwargs)
+        return f"{self.base_url}/{path}"
+
     # Exchanges the static access token for a JWT bearer token; caches it for the lifetime of the instance.
     async def _get_bearer_token(self) -> str:
         """Exchange the security token for a JWT bearer token (cached per instance)."""
         if self._bearer_token:
             return self._bearer_token
         resp = await self._client.post(
-            f"{self.base_url}/api/v1/auth/anonymous",
+            self._url("auth"),
             json={"accessToken": self.access_token},
         )
         if resp.status_code not in (200, 201):
@@ -77,7 +99,7 @@ class GhostfolioClient:
         """GET /api/v1/portfolio/holdings — returns all positions."""
         bearer = await self._get_bearer_token()
         resp = await self._client.get(
-            f"{self.base_url}/api/v1/portfolio/holdings",
+            self._url("holdings"),
             headers=self._auth_headers(bearer),
         )
         if resp.status_code == 401:
@@ -90,10 +112,10 @@ class GhostfolioClient:
     # Fetches portfolio performance metrics (returns, gains) for the given date range.
     @retry(stop=stop_after_attempt(2), wait=wait_fixed(0.3))
     async def get_portfolio_performance(self, date_range: str = "max") -> dict[str, Any]:
-        """GET /api/v1/portfolio/performance — YTD, 1Y, max returns."""
+        """GET /api/v2/portfolio/performance — YTD, 1Y, max returns."""
         bearer = await self._get_bearer_token()
         resp = await self._client.get(
-            f"{self.base_url}/api/v1/portfolio/performance",
+            self._url("performance"),
             params={"range": date_range},
             headers=self._auth_headers(bearer),
         )
@@ -122,7 +144,7 @@ class GhostfolioClient:
         if date_to:
             params["dateTo"] = date_to
         resp = await self._client.get(
-            f"{self.base_url}/api/v1/order",
+            self._url("orders"),
             params=params,
             headers=self._auth_headers(bearer),
         )
@@ -137,7 +159,7 @@ class GhostfolioClient:
     async def get_public_portfolio(self) -> dict[str, Any]:
         """GET /api/v1/public/{access_id}/portfolio — no auth required."""
         resp = await self._client.get(
-            f"{self.base_url}/api/v1/public/{self.public_access_id}/portfolio"
+            self._url("public", access_id=self.public_access_id)
         )
         if resp.status_code != 200:
             raise GhostfolioError(resp.status_code, resp.text)

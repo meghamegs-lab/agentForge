@@ -242,7 +242,7 @@ async def test_fee_drag_sql_injection_in_date_range_returns_graceful_error():
     respx.get(f"{BASE_URL}/api/v1/order").mock(
         return_value=httpx.Response(200, json={"activities": []})
     )
-    respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+    respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
         return_value=httpx.Response(200, json={"performance": {}})
     )
     respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(

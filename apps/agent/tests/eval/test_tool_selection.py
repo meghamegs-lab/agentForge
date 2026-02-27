@@ -160,7 +160,7 @@ class TestDomainBoundary:
     @respx.mock
     async def test_performance_tool_does_not_return_holdings(self):
         _auth()
-        respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+        respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
             return_value=httpx.Response(200, json=_PERF_BODY)
         )
         result = await _get_performance("ytd")
@@ -212,7 +212,7 @@ class TestParameterMapping:
         Passing any of them must succeed and echo back the period in the response.
         """
         _auth()
-        respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+        respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
             return_value=httpx.Response(200, json=_PERF_BODY)
         )
         result = await _get_performance(period)

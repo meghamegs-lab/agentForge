@@ -119,7 +119,7 @@ def _mock_holdings():
 
 
 def _mock_performance():
-    respx.get(f"{BASE_URL}/api/v1/portfolio/performance").mock(
+    respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
         return_value=httpx.Response(200, json=PERF_DATA)
     )
 
