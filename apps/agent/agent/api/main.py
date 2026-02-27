@@ -230,11 +230,22 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
             for f in final_state.get("verification_flags", [])
         ]
 
-        # Build ToolCallInfo from ToolMessage objects in the message history.
-        # Each ToolMessage records the name of the tool and its JSON result,
-        # which always contains a "status" key ("success" / "error" / "empty").
+        # Build ToolCallInfo — only from the CURRENT turn's tool calls.
+        # final_state["messages"] contains the full conversation history (all turns)
+        # because of the add_messages reducer + Postgres checkpointer. Without this
+        # slice, tool calls from ALL previous turns bleed into the current response,
+        # making the widget show stale tools as if they ran this turn.
+        # Fix: find the last HumanMessage (= start of current turn) and only scan
+        # ToolMessages that follow it.
+        all_messages = final_state.get("messages", [])
+        last_human_idx = 0
+        for i, msg in enumerate(all_messages):
+            if isinstance(msg, HumanMessage):
+                last_human_idx = i
+        current_turn_messages = all_messages[last_human_idx:]
+
         tool_calls: list[ToolCallInfo] = []
-        for msg in final_state.get("messages", []):
+        for msg in current_turn_messages:
             if isinstance(msg, ToolMessage):
                 try:
                     result: dict = json.loads(msg.content) if isinstance(msg.content, str) else {}

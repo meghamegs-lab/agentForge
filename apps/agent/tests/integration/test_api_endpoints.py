@@ -20,7 +20,8 @@ Tests covered:
   7.  POST /api/chat returns LOW confidence + AGENT_ERROR when graph raises
   8.  POST /api/chat includes verification flags in response
   9.  POST /api/chat tool_calls populated from ToolMessage history
-  10. POST /api/chat CORS header present for allowed origin
+  10. POST /api/chat tool_calls scoped to current turn only (multi-turn regression)
+  11. POST /api/chat CORS header present for allowed origin
 """
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from agent.api.main import app
 
@@ -203,6 +204,71 @@ class TestChatEndpointHappyPath:
         tool_calls = data.get("tool_calls", [])
         assert len(tool_calls) == 1
         assert tool_calls[0]["tool_name"] == "get_portfolio_summary"
+        assert tool_calls[0]["status"] == "ok"
+
+    async def test_tool_calls_scoped_to_current_turn_only(self, api_client):
+        """
+        Regression: in multi-turn conversations final_state["messages"] contains
+        ToolMessages from ALL previous turns (add_messages reducer + Postgres
+        checkpointer).  The API must only surface tool calls that belong to the
+        CURRENT turn — i.e. ToolMessages that appear AFTER the last HumanMessage.
+
+        Setup:
+          [AIMessage(prev-answer), ToolMessage(prev-turn-tool), HumanMessage(current),
+           ToolMessage(current-turn-tool), AIMessage(current-answer)]
+
+        Expected: tool_calls contains ONLY the current-turn ToolMessage.
+        """
+        client, mock_graph = api_client
+        prev_tool_result = json.dumps({"status": "ok", "total_value": 5000.0})
+        curr_tool_result = json.dumps({"status": "ok", "symbol": "NVDA", "current_price": 178.83})
+
+        # Simulate the full message history LangGraph returns for turn 2
+        mock_graph.ainvoke.return_value = {
+            "messages": [
+                # ── Previous turn ──────────────────────────────────────────
+                HumanMessage(content="What is my portfolio?"),
+                ToolMessage(
+                    content=prev_tool_result,
+                    name="get_portfolio_summary",
+                    tool_call_id="call-prev",
+                ),
+                AIMessage(content="Your portfolio is worth $5000."),
+                # ── Current turn ───────────────────────────────────────────
+                HumanMessage(content="What is the price of NVDA?"),
+                ToolMessage(
+                    content=curr_tool_result,
+                    name="get_market_data",
+                    tool_call_id="call-curr",
+                ),
+                AIMessage(content="NVDA is $178.83."),
+            ],
+            "final_response": "NVDA is $178.83.",
+            "verification_flags": [],
+            "confidence": "HIGH",
+            "tool_results": [],
+            "should_escalate": False,
+            "reasoning_steps": 1,
+            "turn_number": 2,
+            "context_entities": {},
+            "conversation_id": "test-conv",
+            "user_id": "anonymous",
+        }
+
+        data = (
+            await client.post(
+                "/api/chat",
+                json={"message": "What is the price of NVDA?", "conversation_id": "test-conv"},
+            )
+        ).json()
+
+        tool_calls = data.get("tool_calls", [])
+        # Must only see the current turn's tool call — NOT the previous turn's
+        assert len(tool_calls) == 1, (
+            f"Expected 1 tool call (current turn only) but got {len(tool_calls)}: "
+            f"{[t['tool_name'] for t in tool_calls]}"
+        )
+        assert tool_calls[0]["tool_name"] == "get_market_data"
         assert tool_calls[0]["status"] == "ok"
 
     async def test_turn_number_in_response(self, api_client):

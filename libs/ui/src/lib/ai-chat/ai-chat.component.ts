@@ -71,15 +71,6 @@ export interface PromptCategory {
   groups: PromptGroup[];
 }
 
-/** A saved conversation snapshot stored in localStorage */
-export interface ConversationSnapshot {
-  id: string;
-  savedAt: string; // ISO string
-  title: string; // First user message, truncated to 60 chars
-  conversationId: string; // Fortio conversation_id for resuming context
-  messages: AiChatMessage[];
-}
-
 // ── Component ────────────────────────────────────────────────────────────────
 
 @Component({
@@ -120,18 +111,10 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
   // Prompt tips panel open/close state
   public isPromptTipsOpen = false;
 
-  // Conversation history panel open/close state
-  public isHistoryOpen = false;
-
-  // Loaded history snapshots from localStorage
-  public historySnapshots: ConversationSnapshot[] = [];
-
   // The conversation_id returned by Fortio (lets agent remember context)
   private conversationId = '';
 
   private readonly unsubscribeSubject = new Subject<void>();
-  private readonly HISTORY_KEY = 'fortio-chat-history';
-  public readonly MAX_HISTORY = 50;
 
   // ── Prompt Tips Data ─────────────────────────────────────────────────────
   public readonly promptCategories: PromptCategory[] = [
@@ -303,8 +286,6 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
   ) {}
 
   public ngOnInit(): void {
-    this.historySnapshots = this.loadHistory();
-
     // Push a welcome message when the widget loads
     this.messages.push({
       role: 'assistant',
@@ -332,22 +313,16 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
   // ── Panel Toggle ────────────────────────────────────────────────────────────
 
   public togglePanel(): void {
-    if (this.isPanelOpen) {
-      this.saveCurrentSession();
-    }
     this.isPanelOpen = !this.isPanelOpen;
     if (!this.isPanelOpen) {
       this.isPromptTipsOpen = false;
-      this.isHistoryOpen = false;
     }
     this.changeDetectorRef.markForCheck();
   }
 
   public closePanel(): void {
-    this.saveCurrentSession();
     this.isPanelOpen = false;
     this.isPromptTipsOpen = false;
-    this.isHistoryOpen = false;
     this.changeDetectorRef.markForCheck();
   }
 
@@ -355,9 +330,6 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
 
   public togglePromptTips(): void {
     this.isPromptTipsOpen = !this.isPromptTipsOpen;
-    if (this.isPromptTipsOpen) {
-      this.isHistoryOpen = false; // close history when tips open
-    }
     this.changeDetectorRef.markForCheck();
   }
 
@@ -375,64 +347,14 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
     }, 0);
   }
 
-  // ── History ─────────────────────────────────────────────────────────────────
-
-  public toggleHistory(): void {
-    this.isHistoryOpen = !this.isHistoryOpen;
-    if (this.isHistoryOpen) {
-      this.isPromptTipsOpen = false; // close tips when history opens
-      this.historySnapshots = this.loadHistory();
-    }
-    this.changeDetectorRef.markForCheck();
-  }
-
-  /** Start a fresh conversation — saves the current one first */
+  /** Start a fresh conversation */
   public startNewChat(): void {
-    this.saveCurrentSession();
     this.conversationId = '';
     this.messages = [];
     this.inputText = '';
-    this.isHistoryOpen = false;
     this.isPromptTipsOpen = false;
     this.ngOnInit(); // re-push the welcome message
     this.changeDetectorRef.markForCheck();
-  }
-
-  /** Restore a past conversation into the current view */
-  public resumeConversation(snapshot: ConversationSnapshot): void {
-    this.saveCurrentSession();
-    // Deserialise Date objects (stored as ISO strings in JSON)
-    this.messages = snapshot.messages.map((m) => ({
-      ...m,
-      timestamp: new Date(m.timestamp)
-    }));
-    this.conversationId = snapshot.conversationId;
-    this.isHistoryOpen = false;
-    this.changeDetectorRef.markForCheck();
-    setTimeout(() => this.scrollToBottom(), 50);
-  }
-
-  /** Delete a single history entry without opening the conversation */
-  public deleteSnapshot(id: string, event: Event): void {
-    event.stopPropagation();
-    const snapshots = this.loadHistory().filter((s) => s.id !== id);
-    localStorage.setItem(this.HISTORY_KEY, JSON.stringify(snapshots));
-    this.historySnapshots = snapshots;
-    this.changeDetectorRef.markForCheck();
-  }
-
-  /** Human-readable relative time for a snapshot date */
-  public formatSnapshotDate(isoString: string): string {
-    const d = new Date(isoString);
-    const diffMs = Date.now() - d.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHrs = Math.floor(diffMins / 60);
-    if (diffHrs < 24) return `${diffHrs}h ago`;
-    const diffDays = Math.floor(diffHrs / 24);
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return d.toLocaleDateString();
   }
 
   // ── Send Message ────────────────────────────────────────────────────────────
@@ -556,48 +478,6 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
     const container = document.querySelector('.gf-ai-chat-messages');
     if (container) {
       container.scrollTop = container.scrollHeight;
-    }
-  }
-
-  /** Save the current session to localStorage (only if it has user messages) */
-  private saveCurrentSession(): void {
-    const userMessages = this.messages.filter((m) => m.role === 'user');
-    if (userMessages.length === 0) return;
-
-    const rawTitle = userMessages[0].content;
-    const title = rawTitle.length > 60 ? rawTitle.slice(0, 60) + '…' : rawTitle;
-
-    const snapshot: ConversationSnapshot = {
-      id: this.conversationId || `local-${Date.now()}`,
-      savedAt: new Date().toISOString(),
-      title,
-      conversationId: this.conversationId,
-      // Strip rawResponse to keep localStorage storage compact
-      messages: this.messages.map((msg) => {
-        const copy = { ...msg } as Partial<AiChatMessage>;
-        delete copy.rawResponse;
-        return copy as AiChatMessage;
-      })
-    };
-
-    const existing = this.loadHistory().filter((s) => s.id !== snapshot.id);
-    const updated = [snapshot, ...existing].slice(0, this.MAX_HISTORY);
-    localStorage.setItem(this.HISTORY_KEY, JSON.stringify(updated));
-    this.historySnapshots = updated;
-  }
-
-  /** Read conversation snapshots from localStorage, always newest-first */
-  private loadHistory(): ConversationSnapshot[] {
-    try {
-      const raw = localStorage.getItem(this.HISTORY_KEY);
-      const snapshots = raw ? (JSON.parse(raw) as ConversationSnapshot[]) : [];
-      // Sort descending by savedAt so the list is newest-first even if
-      // localStorage data was written out of order by an older version.
-      return snapshots.sort(
-        (a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()
-      );
-    } catch {
-      return [];
     }
   }
 
