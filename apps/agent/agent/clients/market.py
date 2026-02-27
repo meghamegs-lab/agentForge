@@ -30,30 +30,14 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
-import requests
 import yfinance as yf
 from tenacity import RetryError, retry, stop_after_attempt, wait_exponential
 
-# ── Shared requests session with browser-like headers ─────────────────────────
-# Yahoo Finance detects and blocks bare cloud IPs (Railway, AWS, GCP, etc.).
-# Using a realistic User-Agent + Accept headers makes requests look browser-like
-# and bypasses the block. The session is created once at module load and reused
-# across all yf.Ticker() calls (thread-safe for reads).
-_YF_SESSION = requests.Session()
-_YF_SESSION.headers.update(
-    {
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/122.0.0.0 Safari/537.36"
-        ),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "DNT": "1",
-        "Connection": "keep-alive",
-    }
-)
+# ── yfinance 0.2.38+ session note ─────────────────────────────────────────────
+# Newer yfinance uses curl_cffi internally for its HTTP session.
+# Do NOT pass a requests.Session — yfinance will raise:
+#   "Yahoo API requires curl_cffi session not requests.sessions.Session"
+# Let yfinance manage its own session by omitting the session= argument.
 
 
 class MarketDataClient:
@@ -72,7 +56,7 @@ class MarketDataClient:
         symbol) return a price_unavailable dict — no exception, no retry needed
         because the period fallback inside already tried '5d'.
         """
-        ticker = yf.Ticker(symbol, session=_YF_SESSION)
+        ticker = yf.Ticker(symbol)
         info = ticker.fast_info
 
         # Fix 2: Try "1d" first; fall back to "5d" for market-closed / weekend days
