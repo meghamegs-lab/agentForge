@@ -1,12 +1,7 @@
 name: Extract locales
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'apps/client/src/**'
-      - 'libs/**'
+  workflow_dispatch: # disabled — only runs if manually triggered
 
 permissions:
   contents: write
