@@ -119,21 +119,20 @@ def check_hallucination(
     flags: list[VerificationFlag] = []
 
     if not tool_results:
-        # No tools were called — advisory / opinion answers are normal here.
-        # Flag any financial numbers as unverified but do NOT escalate (MEDIUM,
-        # not HIGH): escalation is reserved for the genuinely dangerous case
-        # where tools were called, all failed, yet the LLM still cites specifics.
+        # No tools were called — if the LLM still cites specific financial
+        # numbers (dollar amounts, precise percentages), this is HIGH severity:
+        # the LLM is presenting training-data guesses as verified portfolio facts.
         nums_in_response = _extract_numbers(response)
         financial_nums = {n for n in nums_in_response if _looks_financial(n)}
         if financial_nums:
             flags.append(
                 {
                     "type": "POTENTIAL_HALLUCINATION",
-                    "severity": "MEDIUM",
+                    "severity": "HIGH",
                     "message": (
                         f"Response contains financial numbers {financial_nums} "
                         "but no tool was called to retrieve data — "
-                        "treat as general opinion, not verified portfolio data"
+                        "these figures are unverified and may be fabricated from training data"
                     ),
                 }
             )

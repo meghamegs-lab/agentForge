@@ -1,7 +1,7 @@
 """Shared pytest fixtures for all test suites."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -122,4 +122,4 @@ def sample_orders_response():
 
 @pytest.fixture
 def now_iso():
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
