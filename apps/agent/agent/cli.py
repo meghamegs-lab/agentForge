@@ -15,6 +15,7 @@ Run directly (without installing):
 After installing the package (pip install -e .):
   fortio ask "What's my portfolio?"
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -171,6 +172,7 @@ _DEFAULT_FOLLOWUPS: list[str] = [
 
 # ── Core async invoke helper ───────────────────────────────────────────────────
 
+
 # Sends one message through the agent graph and returns the final AgentState dict.
 async def _invoke(message: str, conversation_id: str, user_id: str) -> dict:
     """Send one message through the agent graph and return the final state."""
@@ -299,9 +301,7 @@ def _render_suggestions_table() -> None:
     for i in range(0, len(_SUGGESTION_CATEGORIES), 2):
         left = _block(*_SUGGESTION_CATEGORIES[i])
         right = (
-            _block(*_SUGGESTION_CATEGORIES[i + 1])
-            if i + 1 < len(_SUGGESTION_CATEGORIES)
-            else ""
+            _block(*_SUGGESTION_CATEGORIES[i + 1]) if i + 1 < len(_SUGGESTION_CATEGORIES) else ""
         )
         table.add_row(left, right)
         table.add_row("", "")  # spacer row
@@ -350,6 +350,7 @@ def _render_tools_list() -> None:
 
 # ── Commands ───────────────────────────────────────────────────────────────────
 
+
 # Sends a single question to the agent, prints the answer, and exits — no persistent REPL.
 @app.command()
 def ask(
@@ -385,7 +386,9 @@ def chat(
         help="Resume a prior conversation by its ID (same process only)",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show tool call details per turn"),
-    suggest: bool = typer.Option(True, "--suggest/--no-suggest", help="Show follow-up suggestions after each response"),
+    suggest: bool = typer.Option(
+        True, "--suggest/--no-suggest", help="Show follow-up suggestions after each response"
+    ),
 ) -> None:
     """Start an interactive multi-turn chat REPL with Fortio."""
     cid = conversation_id or str(uuid.uuid4())
@@ -483,7 +486,6 @@ def serve(
     )
 
 
-
 # Starts the Fortio MCP server on stdio so Claude Desktop or Cursor can connect as an MCP host.
 @app.command()
 def mcp() -> None:
@@ -529,6 +531,7 @@ def mcp() -> None:
         )
     )
     asyncio.run(serve())
+
 
 # Prints the Fortio version string and the key settings active in the current environment.
 @app.command()

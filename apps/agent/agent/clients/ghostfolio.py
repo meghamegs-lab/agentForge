@@ -10,6 +10,7 @@ Use `get_shared_client()` inside agent tools instead of creating a new
 across every tool invocation in the same process, saving one auth round-trip
 (~200-400 ms) per tool call after the first.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -35,11 +36,11 @@ class GhostfolioClient:
     # one place. Note: /portfolio/performance moved to v2 in Ghostfolio ≥2.x;
     # all other endpoints remain on v1.
     _ENDPOINTS: dict[str, str] = {
-        "auth":        "api/v1/auth/anonymous",
-        "holdings":    "api/v1/portfolio/holdings",
+        "auth": "api/v1/auth/anonymous",
+        "holdings": "api/v1/portfolio/holdings",
         "performance": "api/v2/portfolio/performance",  # v2-only endpoint
-        "orders":      "api/v1/order",
-        "public":      "api/v1/public/{access_id}/portfolio",
+        "orders": "api/v1/order",
+        "public": "api/v1/public/{access_id}/portfolio",
     }
 
     def __init__(
@@ -158,9 +159,7 @@ class GhostfolioClient:
     # Fetches the public portfolio view using the public access ID — no authentication required.
     async def get_public_portfolio(self) -> dict[str, Any]:
         """GET /api/v1/public/{access_id}/portfolio — no auth required."""
-        resp = await self._client.get(
-            self._url("public", access_id=self.public_access_id)
-        )
+        resp = await self._client.get(self._url("public", access_id=self.public_access_id))
         if resp.status_code != 200:
             raise GhostfolioError(resp.status_code, resp.text)
         return resp.json()

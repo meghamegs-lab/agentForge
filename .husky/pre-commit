@@ -1,6 +1,48 @@
-# Run linting and stop the commit process if any errors are found
-# --quiet suppresses warnings (temporary until all warnings are fixed)
-npm run affected:lint --base=main --head=HEAD --parallel=2 --quiet || exit 1
+#!/usr/bin/env sh
+# ── Pre-commit hook ───────────────────────────────────────────────────────────
+# Runs fast, targeted checks on staged files only.
+# Blocks the commit on any lint or formatting error.
+#
+# Checks:
+#   TypeScript / Angular  → ESLint (nx affected:lint) + Prettier (nx format:check)
+#   Python / Agent        → ruff check (lint) + ruff format --check (formatting)
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Check formatting on modified and uncommitted files, stop the commit if issues are found
-npm run format:check --uncommitted || exit 1
+# ── 1. TypeScript / Angular: ESLint ──────────────────────────────────────────
+# Only runs on files affected relative to main — skips unrelated projects.
+echo "▶ ESLint (affected projects)..."
+npm run affected:lint -- --base=main --head=HEAD --parallel=2 --quiet || {
+  echo "❌ ESLint failed. Fix the errors above before committing."
+  exit 1
+}
+
+# ── 2. TypeScript / Angular: Prettier ────────────────────────────────────────
+# Checks formatting on all currently staged/uncommitted files.
+echo "▶ Prettier (format check)..."
+npm run format:check -- --uncommitted || {
+  echo "❌ Prettier formatting check failed."
+  echo "   Run 'npm run format' to auto-fix, then re-stage and commit."
+  exit 1
+}
+
+# ── 3. Python / Agent: ruff lint + format ────────────────────────────────────
+# Only runs when Python files inside apps/agent/ are staged — zero cost otherwise.
+STAGED_PYTHON=$(git diff --cached --name-only | grep '^apps/agent/.*\.py$' || true)
+
+if [ -n "$STAGED_PYTHON" ]; then
+  echo "▶ Ruff lint (apps/agent/)..."
+  (cd apps/agent && ruff check agent/) || {
+    echo "❌ Ruff lint failed. Fix the errors above before committing."
+    echo "   Tip: run 'cd apps/agent && ruff check agent/ --fix' for auto-fixable issues."
+    exit 1
+  }
+
+  echo "▶ Ruff format check (apps/agent/)..."
+  (cd apps/agent && ruff format --check agent/) || {
+    echo "❌ Ruff formatting check failed."
+    echo "   Run 'cd apps/agent && ruff format agent/' to auto-fix, then re-stage and commit."
+    exit 1
+  }
+fi
+
+echo "✅ All pre-commit checks passed."

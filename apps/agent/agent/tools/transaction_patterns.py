@@ -5,6 +5,7 @@ Multi-step: all transactions + market data for each symbol →
 detects behavioural patterns like performance-chasing, panic selling, DCA consistency.
 Standout: Behavioural coaching from your OWN trade history — no other tool does this.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -66,15 +67,13 @@ async def _transaction_patterns() -> dict[str, Any]:
 
         if trades_per_month > 4:
             churn_label = (
-                "HIGH — you trade very frequently. "
-                "High turnover increases fees and tax drag."
+                "HIGH — you trade very frequently. High turnover increases fees and tax drag."
             )
         elif trades_per_month > 1:
             churn_label = "MODERATE — you make regular adjustments."
         else:
             churn_label = (
-                "LOW — you are a buy-and-hold investor. "
-                "This generally benefits long-term returns."
+                "LOW — you are a buy-and-hold investor. This generally benefits long-term returns."
             )
 
         # ── DCA consistency ────────────────────────────────────────
@@ -86,12 +85,13 @@ async def _transaction_patterns() -> dict[str, Any]:
             to_year, to_month = int(last[:4]), int(last[5:7])
             possible_months = (to_year - from_year) * 12 + (to_month - from_month) + 1
             dca_score = (
-                round(len(buy_months) / possible_months * 100, 1)
-                if possible_months > 0 else 0
+                round(len(buy_months) / possible_months * 100, 1) if possible_months > 0 else 0
             )
             dca_label = (
-                "Excellent DCA discipline" if dca_score >= 75
-                else "Good DCA consistency" if dca_score >= 50
+                "Excellent DCA discipline"
+                if dca_score >= 75
+                else "Good DCA consistency"
+                if dca_score >= 50
                 else "Irregular contributions — consider a fixed monthly schedule"
             )
         else:
@@ -113,41 +113,44 @@ async def _transaction_patterns() -> dict[str, Any]:
             total_qty = sum(t.get("quantity", 0) for t in sym_buys)
             avg_buy_price = (
                 sum(t.get("unitPrice", 0) * t.get("quantity", 0) for t in sym_buys) / total_qty
-                if total_qty > 0 else 0
+                if total_qty > 0
+                else 0
             )
 
             price_data = await _market.get_quote(sym)
             current_price = (
-                price_data.get("current_price")
-                if price_data.get("status") == "ok" else None
+                price_data.get("current_price") if price_data.get("status") == "ok" else None
             )
 
             unrealized_pct = (
                 (current_price - avg_buy_price) / avg_buy_price * 100
-                if (current_price and avg_buy_price) else None
+                if (current_price and avg_buy_price)
+                else None
             )
 
             total_fees = sum(t.get("fee", 0) or 0 for t in trades)
-            total_invested = sum(
-                t.get("unitPrice", 0) * t.get("quantity", 0) for t in sym_buys
+            total_invested = sum(t.get("unitPrice", 0) * t.get("quantity", 0) for t in sym_buys)
+
+            trade_results.append(
+                {
+                    "symbol": sym,
+                    "name": sym_buys[0].get("SymbolProfile", {}).get("name", sym),
+                    "avg_buy_price": round(avg_buy_price, 2),
+                    "current_price": current_price,
+                    "unrealized_gain_pct": round(unrealized_pct, 2)
+                    if unrealized_pct is not None
+                    else None,
+                    "total_invested": round(total_invested, 2),
+                    "total_fees": round(total_fees, 2),
+                    "trade_count": len(trades),
+                    "still_holding": sym in holdings,
+                    "first_buy_date": min(t.get("date", "") for t in sym_buys)
+                    if sym_buys
+                    else None,
+                }
             )
 
-            trade_results.append({
-                "symbol": sym,
-                "name": sym_buys[0].get("SymbolProfile", {}).get("name", sym),
-                "avg_buy_price": round(avg_buy_price, 2),
-                "current_price": current_price,
-                "unrealized_gain_pct": round(unrealized_pct, 2) if unrealized_pct is not None else None,
-                "total_invested": round(total_invested, 2),
-                "total_fees": round(total_fees, 2),
-                "trade_count": len(trades),
-                "still_holding": sym in holdings,
-                "first_buy_date": min(t.get("date", "") for t in sym_buys) if sym_buys else None,
-            })
-
-        trade_results.sort(
-            key=lambda x: x.get("unrealized_gain_pct") or 0, reverse=True
-        )
+        trade_results.sort(key=lambda x: x.get("unrealized_gain_pct") or 0, reverse=True)
 
         best_trades = [t for t in trade_results if (t.get("unrealized_gain_pct") or 0) > 0][:3]
         worst_trades = [t for t in trade_results if (t.get("unrealized_gain_pct") or 0) < 0][:3]
@@ -156,48 +159,57 @@ async def _transaction_patterns() -> dict[str, Any]:
         patterns = []
 
         if len(sells) >= 2:
-            patterns.append({
-                "pattern": "SELL_FREQUENCY",
-                "observation": f"You have made {len(sells)} sell transactions vs {len(buys)} buys.",
-                "insight": (
-                    "Frequent selling often underperforms buy-and-hold strategies due to "
-                    "transaction costs and market timing difficulty."
-                    if len(sells) > len(buys) * 0.5
-                    else "Low sell frequency suggests a buy-and-hold approach."
-                ),
-            })
+            patterns.append(
+                {
+                    "pattern": "SELL_FREQUENCY",
+                    "observation": f"You have made {len(sells)} sell transactions vs {len(buys)} buys.",
+                    "insight": (
+                        "Frequent selling often underperforms buy-and-hold strategies due to "
+                        "transaction costs and market timing difficulty."
+                        if len(sells) > len(buys) * 0.5
+                        else "Low sell frequency suggests a buy-and-hold approach."
+                    ),
+                }
+            )
 
         if dca_score < 50 and len(buys) >= 4:
-            patterns.append({
-                "pattern": "IRREGULAR_CONTRIBUTIONS",
-                "observation": f"DCA score: {dca_score}% — contributions are irregular.",
-                "insight": (
-                    "Irregular investing often means buying more after good market periods "
-                    "(performance-chasing). A fixed monthly schedule removes this bias."
-                ),
-            })
+            patterns.append(
+                {
+                    "pattern": "IRREGULAR_CONTRIBUTIONS",
+                    "observation": f"DCA score: {dca_score}% — contributions are irregular.",
+                    "insight": (
+                        "Irregular investing often means buying more after good market periods "
+                        "(performance-chasing). A fixed monthly schedule removes this bias."
+                    ),
+                }
+            )
 
         high_fee_positions = [t for t in trade_results if t["total_fees"] > 20]
         if high_fee_positions:
-            patterns.append({
-                "pattern": "FEE_DRAG",
-                "observation": f"{len(high_fee_positions)} positions with >$20 total fees.",
-                "insight": "High-fee positions may indicate active trading. Consider low-cost ETFs.",
-            })
+            patterns.append(
+                {
+                    "pattern": "FEE_DRAG",
+                    "observation": f"{len(high_fee_positions)} positions with >$20 total fees.",
+                    "insight": "High-fee positions may indicate active trading. Consider low-cost ETFs.",
+                }
+            )
 
         multi_buy_symbols = [
-            s for s, t in symbol_trades.items()
+            s
+            for s, t in symbol_trades.items()
             if len([x for x in t if x.get("type") == "BUY"]) >= 3
         ]
         if multi_buy_symbols:
-            patterns.append({
-                "pattern": "AVERAGING_DOWN_OR_DCA",
-                "observation": f"3+ buy transactions in: {', '.join(multi_buy_symbols[:3])}",
-                "insight": (
-                    "Multiple buys in the same symbol can be disciplined DCA or averaging down "
-                    "into a loser — check performance."
-                ),
-            })
+            patterns.append(
+                {
+                    "pattern": "AVERAGING_DOWN_OR_DCA",
+                    "observation": f"3+ buy transactions in: {', '.join(multi_buy_symbols[:3])}",
+                    "insight": (
+                        "Multiple buys in the same symbol can be disciplined DCA or averaging down "
+                        "into a loser — check performance."
+                    ),
+                }
+            )
 
         # ── Coaching summary ───────────────────────────────────────
         if dca_score >= 75 and trades_per_month <= 1 and len(worst_trades) < len(best_trades):

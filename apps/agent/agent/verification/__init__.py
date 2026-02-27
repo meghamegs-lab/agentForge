@@ -7,6 +7,7 @@ returns (modified_response, list_of_flags).
 
 Pipeline runs in order: disclaimer → hallucination → freshness → concentration → confidence
 """
+
 from __future__ import annotations
 
 import json
@@ -24,9 +25,21 @@ VerificationFlag = dict[str, str]  # {type, severity, message}
 # ─── 1. Disclaimer Injection ──────────────────────────────────────────────────
 
 INVESTMENT_KEYWORDS = {
-    "buy", "sell", "invest", "rebalance", "recommend", "should i",
-    "allocate", "diversify", "move", "shift", "rotate", "switch",
-    "portfolio change", "what to do", "advice",
+    "buy",
+    "sell",
+    "invest",
+    "rebalance",
+    "recommend",
+    "should i",
+    "allocate",
+    "diversify",
+    "move",
+    "shift",
+    "rotate",
+    "switch",
+    "portfolio change",
+    "what to do",
+    "advice",
 }
 
 DISCLAIMER_TEXT = (
@@ -36,9 +49,7 @@ DISCLAIMER_TEXT = (
 
 
 # Appends a financial disclaimer to the response when investment-advice language is detected.
-def check_disclaimer(
-    response: str, tool_results: list[dict]
-) -> tuple[str, list[VerificationFlag]]:
+def check_disclaimer(response: str, tool_results: list[dict]) -> tuple[str, list[VerificationFlag]]:
     """
     Appends the standard financial disclaimer whenever the response contains
     investment suggestion language. Idempotent — won't add twice.
@@ -50,16 +61,19 @@ def check_disclaimer(
 
     if needs_disclaimer and DISCLAIMER_TEXT.strip() not in response:
         response = response + DISCLAIMER_TEXT
-        flags.append({
-            "type": "DISCLAIMER_ADDED",
-            "severity": "INFO",
-            "message": "Investment language detected — disclaimer appended",
-        })
+        flags.append(
+            {
+                "type": "DISCLAIMER_ADDED",
+                "severity": "INFO",
+                "message": "Investment language detected — disclaimer appended",
+            }
+        )
 
     return response, flags
 
 
 # ─── 2. Hallucination Guard ───────────────────────────────────────────────────
+
 
 # Extracts all numeric values (prices, percentages, dollar amounts) from a text string using regex.
 def _extract_numbers(text: str) -> set[str]:
@@ -85,9 +99,7 @@ def _all_tools_failed(tool_results: list[dict]) -> bool:
     (error, price_unavailable) — meaning no real data was retrieved.
     """
     failure_statuses = {"error", "price_unavailable"}
-    return bool(tool_results) and all(
-        r.get("status") in failure_statuses for r in tool_results
-    )
+    return bool(tool_results) and all(r.get("status") in failure_statuses for r in tool_results)
 
 
 # Flags financial numbers in the response that cannot be traced back to any tool result.
@@ -114,15 +126,17 @@ def check_hallucination(
         nums_in_response = _extract_numbers(response)
         financial_nums = {n for n in nums_in_response if _looks_financial(n)}
         if financial_nums:
-            flags.append({
-                "type": "POTENTIAL_HALLUCINATION",
-                "severity": "MEDIUM",
-                "message": (
-                    f"Response contains financial numbers {financial_nums} "
-                    "but no tool was called to retrieve data — "
-                    "treat as general opinion, not verified portfolio data"
-                ),
-            })
+            flags.append(
+                {
+                    "type": "POTENTIAL_HALLUCINATION",
+                    "severity": "MEDIUM",
+                    "message": (
+                        f"Response contains financial numbers {financial_nums} "
+                        "but no tool was called to retrieve data — "
+                        "treat as general opinion, not verified portfolio data"
+                    ),
+                }
+            )
         return response, flags
 
     # All tools failed — check if LLM guessed anyway
@@ -130,34 +144,35 @@ def check_hallucination(
         nums_in_response = _extract_numbers(response)
         financial_nums = {n for n in nums_in_response if _looks_financial(n)}
         if financial_nums:
-            flags.append({
-                "type": "POTENTIAL_HALLUCINATION",
-                "severity": "HIGH",
-                "message": (
-                    f"All data tools returned errors but response still contains "
-                    f"financial numbers {financial_nums} — likely guessed from training data"
-                ),
-            })
+            flags.append(
+                {
+                    "type": "POTENTIAL_HALLUCINATION",
+                    "severity": "HIGH",
+                    "message": (
+                        f"All data tools returned errors but response still contains "
+                        f"financial numbers {financial_nums} — likely guessed from training data"
+                    ),
+                }
+            )
         return response, flags
 
     # At least one tool succeeded — check for unsupported numbers
     tool_nums = _extract_numbers_from_tool_results(tool_results)
     response_nums = _extract_numbers(response)
 
-    unsupported = {
-        n for n in response_nums
-        if n not in tool_nums and _looks_financial(n)
-    }
+    unsupported = {n for n in response_nums if n not in tool_nums and _looks_financial(n)}
 
     if unsupported:
-        flags.append({
-            "type": "UNSUPPORTED_CLAIM",
-            "severity": "MEDIUM",
-            "message": (
-                f"These values in the response could not be verified in tool results: "
-                f"{unsupported}. Verify before trusting."
-            ),
-        })
+        flags.append(
+            {
+                "type": "UNSUPPORTED_CLAIM",
+                "severity": "MEDIUM",
+                "message": (
+                    f"These values in the response could not be verified in tool results: "
+                    f"{unsupported}. Verify before trusting."
+                ),
+            }
+        )
 
     return response, flags
 
@@ -218,10 +233,9 @@ def _display_name(holding: dict) -> str:
 
 # ─── 3. Data Freshness Check ──────────────────────────────────────────────────
 
+
 # Warns when any tool result's data_timestamp is older than the configured freshness threshold.
-def check_freshness(
-    response: str, tool_results: list[dict]
-) -> tuple[str, list[VerificationFlag]]:
+def check_freshness(response: str, tool_results: list[dict]) -> tuple[str, list[VerificationFlag]]:
     """
     Inspects data_timestamp fields in tool results.
     Market data: warn if >15 minutes old.
@@ -235,11 +249,13 @@ def check_freshness(
     for result in tool_results:
         ts_str = result.get("data_timestamp")
         if not ts_str:
-            flags.append({
-                "type": "MISSING_TIMESTAMP",
-                "severity": "LOW",
-                "message": "A tool result is missing a data timestamp — freshness unknown",
-            })
+            flags.append(
+                {
+                    "type": "MISSING_TIMESTAMP",
+                    "severity": "LOW",
+                    "message": "A tool result is missing a data timestamp — freshness unknown",
+                }
+            )
             continue
 
         try:
@@ -251,26 +267,31 @@ def check_freshness(
             threshold = market_threshold if is_market_data else portfolio_threshold
 
             if age > threshold:
-                flags.append({
-                    "type": "STALE_DATA",
-                    "severity": "MEDIUM",
-                    "message": (
-                        f"{'Market' if is_market_data else 'Portfolio'} data is "
-                        f"{int(age.total_seconds() / 60)} minutes old — "
-                        f"prices may not reflect current market conditions"
-                    ),
-                })
+                flags.append(
+                    {
+                        "type": "STALE_DATA",
+                        "severity": "MEDIUM",
+                        "message": (
+                            f"{'Market' if is_market_data else 'Portfolio'} data is "
+                            f"{int(age.total_seconds() / 60)} minutes old — "
+                            f"prices may not reflect current market conditions"
+                        ),
+                    }
+                )
         except (ValueError, TypeError):
-            flags.append({
-                "type": "INVALID_TIMESTAMP",
-                "severity": "LOW",
-                "message": f"Could not parse data timestamp: {ts_str}",
-            })
+            flags.append(
+                {
+                    "type": "INVALID_TIMESTAMP",
+                    "severity": "LOW",
+                    "message": f"Could not parse data timestamp: {ts_str}",
+                }
+            )
 
     return response, flags
 
 
 # ─── 4. Concentration Warning ─────────────────────────────────────────────────
+
 
 # Appends a concentration warning to the response if any portfolio position exceeds the threshold.
 def check_concentration(
@@ -291,30 +312,34 @@ def check_concentration(
         if "concentration_flags" in result:
             for flag in result["concentration_flags"]:
                 concentration_warnings.append(flag)
-                flags.append({
-                    "type": "CONCENTRATION_RISK",
-                    "severity": flag.get("severity", "MEDIUM"),
-                    "message": flag.get("message", ""),
-                })
+                flags.append(
+                    {
+                        "type": "CONCENTRATION_RISK",
+                        "severity": flag.get("severity", "MEDIUM"),
+                        "message": flag.get("message", ""),
+                    }
+                )
 
         # From portfolio summary — direct check
         if "holdings" in result:
-            for holding in (result.get("holdings") or []):
+            for holding in result.get("holdings") or []:
                 alloc = holding.get("allocation_percent", 0) / 100
                 if alloc >= threshold:
                     display = _display_name(holding)
-                    symbol = holding.get("symbol", "")   # raw key for dedup only
+                    symbol = holding.get("symbol", "")  # raw key for dedup only
                     msg = (
                         f"{display} is {holding['allocation_percent']}% of your portfolio "
-                        f"(above {int(threshold*100)}% threshold)"
+                        f"(above {int(threshold * 100)}% threshold)"
                     )
                     if not any(w.get("_key") == symbol for w in concentration_warnings):
                         concentration_warnings.append({"_key": symbol, "message": msg})
-                        flags.append({
-                            "type": "CONCENTRATION_RISK",
-                            "severity": "MEDIUM",
-                            "message": msg,
-                        })
+                        flags.append(
+                            {
+                                "type": "CONCENTRATION_RISK",
+                                "severity": "MEDIUM",
+                                "message": msg,
+                            }
+                        )
 
     if concentration_warnings:
         warning_lines = "\n".join(f"  • {w['message']}" for w in concentration_warnings)
@@ -329,19 +354,47 @@ def check_concentration(
 # ─── 5. Confidence Scoring ────────────────────────────────────────────────────
 
 PREDICTION_KEYWORDS = {
-    "will", "forecast", "predict", "expect", "future", "next year",
-    "going to", "likely to", "probably", "might", "could reach",
+    "will",
+    "forecast",
+    "predict",
+    "expect",
+    "future",
+    "next year",
+    "going to",
+    "likely to",
+    "probably",
+    "might",
+    "could reach",
 }
 
 HEDGING_KEYWORDS = {
-    "uncertain", "unclear", "approximately", "roughly", "around", "about",
-    "estimate", "may", "might", "could",
+    "uncertain",
+    "unclear",
+    "approximately",
+    "roughly",
+    "around",
+    "about",
+    "estimate",
+    "may",
+    "might",
+    "could",
 }
 
 SPECULATIVE_KEYWORDS = {
-    "bitcoin", "crypto", "cryptocurrency", "ethereum", "solana", "dogecoin",
-    "nft", "meme stock", "all in", "double down", "yolo", "gamble",
-    "put it all", "everything into",
+    "bitcoin",
+    "crypto",
+    "cryptocurrency",
+    "ethereum",
+    "solana",
+    "dogecoin",
+    "nft",
+    "meme stock",
+    "all in",
+    "double down",
+    "yolo",
+    "gamble",
+    "put it all",
+    "everything into",
 }
 
 
@@ -372,14 +425,16 @@ def check_confidence(
 
     if not has_tool_data or has_predictions or has_speculative:
         confidence = "LOW"
-        flags.append({
-            "type": "LOW_CONFIDENCE",
-            "severity": "INFO",
-            "message": (
-                "Response involves predictions, speculative assets, or was generated "
-                "without tool data — treat with caution"
-            ),
-        })
+        flags.append(
+            {
+                "type": "LOW_CONFIDENCE",
+                "severity": "INFO",
+                "message": (
+                    "Response involves predictions, speculative assets, or was generated "
+                    "without tool data — treat with caution"
+                ),
+            }
+        )
     elif is_multi_step or has_hedging:
         confidence = "MEDIUM"
     else:
@@ -389,6 +444,7 @@ def check_confidence(
 
 
 # ─── Pipeline ─────────────────────────────────────────────────────────────────
+
 
 # Runs all 5 checks in sequence and returns the final response, consolidated flags, and confidence level.
 def run_verification_pipeline(
@@ -428,14 +484,16 @@ def run_verification_pipeline(
     # advisors and any direct recommendation carries inherent uncertainty.
     if disclaimer_added and confidence != "LOW":
         confidence = "LOW"
-        all_flags.append({
-            "type": "LOW_CONFIDENCE",
-            "severity": "INFO",
-            "message": (
-                "Response contains investment advice language (disclaimer triggered) — "
-                "confidence downgraded to LOW"
-            ),
-        })
+        all_flags.append(
+            {
+                "type": "LOW_CONFIDENCE",
+                "severity": "INFO",
+                "message": (
+                    "Response contains investment advice language (disclaimer triggered) — "
+                    "confidence downgraded to LOW"
+                ),
+            }
+        )
 
     return {
         "response": response,

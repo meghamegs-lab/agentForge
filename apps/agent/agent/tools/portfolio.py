@@ -3,6 +3,7 @@
 Tool: get_portfolio_summary
 Returns current holdings, allocation percentages, and total portfolio value.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -13,6 +14,7 @@ from langchain_core.tools import tool
 from agent.clients.ghostfolio import GhostfolioError, get_shared_client
 
 # ── Implementation (importable in unit tests without @tool overhead) ──────────
+
 
 # Core logic: normalises the Ghostfolio holdings payload and computes per-position allocation %.
 async def _get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
@@ -46,23 +48,24 @@ async def _get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
             symbol = holding.get("symbol", "UNKNOWN")
             value = holding.get("valueInBaseCurrency", holding.get("value", 0)) or 0
             total_value += value
-            processed.append({
-                "symbol": symbol,
-                "name": holding.get("name", symbol),
-                "quantity": holding.get("quantity", 0),
-                "current_value": value,
-                "currency": holding.get("currency", "USD"),
-                "asset_class": holding.get("assetClass", "EQUITY"),
-                "asset_sub_class": holding.get("assetSubClass", ""),
-                "sectors": holding.get("sectors", []),
-                "countries": holding.get("countries", []),
-            })
+            processed.append(
+                {
+                    "symbol": symbol,
+                    "name": holding.get("name", symbol),
+                    "quantity": holding.get("quantity", 0),
+                    "current_value": value,
+                    "currency": holding.get("currency", "USD"),
+                    "asset_class": holding.get("assetClass", "EQUITY"),
+                    "asset_sub_class": holding.get("assetSubClass", ""),
+                    "sectors": holding.get("sectors", []),
+                    "countries": holding.get("countries", []),
+                }
+            )
 
         # Calculate allocation percentages
         for h in processed:
             h["allocation_percent"] = (
-                round(h["current_value"] / total_value * 100, 2)
-                if total_value > 0 else 0.0
+                round(h["current_value"] / total_value * 100, 2) if total_value > 0 else 0.0
             )
 
         # Sort by value descending
@@ -94,6 +97,7 @@ async def _get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
 
 
 # ── LangChain Tool (used by the graph) ────────────────────────────────────────
+
 
 # LangChain @tool wrapper — delegates to _get_portfolio_summary; used by the agent graph.
 @tool

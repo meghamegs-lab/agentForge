@@ -14,6 +14,7 @@ Checkpointing:
   - FastAPI uses AsyncPostgresSaver (persistent across restarts)
   - CLI/dev uses MemorySaver (in-memory, sufficient for a single process)
 """
+
 from __future__ import annotations
 
 import json
@@ -38,6 +39,7 @@ from agent.verification import run_verification_pipeline
 # Rebuilding ChatAnthropic on every reasoning step adds overhead and
 # prevents connection pooling inside the SDK.
 
+
 # Builds the primary LLM (Claude or GPT-4o fallback) with all tools bound — called once at module import.
 def _build_llm():
     """Build the LLM with all tools bound. Called exactly once."""
@@ -46,7 +48,7 @@ def _build_llm():
             model=settings.primary_model,
             api_key=settings.anthropic_api_key,
             temperature=0,
-            max_tokens=1024,   # cap output — portfolio answers are concise
+            max_tokens=1024,  # cap output — portfolio answers are concise
         ).bind_tools(ALL_TOOLS)
     return ChatOpenAI(
         model=settings.fallback_model,
@@ -56,7 +58,7 @@ def _build_llm():
     ).bind_tools(ALL_TOOLS)
 
 
-_llm = _build_llm()   # ← module-level singleton
+_llm = _build_llm()  # ← module-level singleton
 _log = structlog.get_logger()
 
 
@@ -64,12 +66,45 @@ _log = structlog.get_logger()
 
 # Words that look like ticker symbols (all-caps, 1-5 chars) but are NOT tickers.
 # Kept narrow — only the most common false-positives from tool JSON + LLM output.
-_TICKER_STOPWORDS: frozenset[str] = frozenset({
-    "HIGH", "LOW", "ETF", "USD", "THE", "FOR", "AND", "YOU", "YOUR", "NOT",
-    "ALL", "ARE", "MEDIUM", "INFO", "ROAI", "YTD", "YES", "NO", "TOP",
-    "BUY", "SELL", "FEE", "DATA", "API", "NONE", "TRUE", "NULL", "GOOD",
-    "BAD", "RISK", "FEES", "URL", "N/A", "OK", "MAX",
-})
+_TICKER_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "HIGH",
+        "LOW",
+        "ETF",
+        "USD",
+        "THE",
+        "FOR",
+        "AND",
+        "YOU",
+        "YOUR",
+        "NOT",
+        "ALL",
+        "ARE",
+        "MEDIUM",
+        "INFO",
+        "ROAI",
+        "YTD",
+        "YES",
+        "NO",
+        "TOP",
+        "BUY",
+        "SELL",
+        "FEE",
+        "DATA",
+        "API",
+        "NONE",
+        "TRUE",
+        "NULL",
+        "GOOD",
+        "BAD",
+        "RISK",
+        "FEES",
+        "URL",
+        "N/A",
+        "OK",
+        "MAX",
+    }
+)
 
 
 # Scans ToolMessage results in conversation history to extract ticker symbols, sectors, and time periods.
@@ -133,6 +168,7 @@ def _extract_context_entities(messages: list) -> dict[str, list[str]]:
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────
 
+
 # Invokes the LLM with the full conversation history and a dynamically injected context block for pronoun resolution.
 async def reasoning_node(state: AgentState) -> dict[str, Any]:
     """
@@ -163,9 +199,7 @@ async def reasoning_node(state: AgentState) -> dict[str, Any]:
             f"resolve to these symbols — do NOT ask for clarification."
         )
     if entities["sectors"]:
-        context_lines.append(
-            f"Sectors discussed: {', '.join(entities['sectors'])}."
-        )
+        context_lines.append(f"Sectors discussed: {', '.join(entities['sectors'])}.")
     if entities["periods"]:
         context_lines.append(
             f"Time periods already established: {', '.join(entities['periods'])}. "
@@ -174,9 +208,8 @@ async def reasoning_node(state: AgentState) -> dict[str, Any]:
 
     system_content = SYSTEM_PROMPT
     if context_lines and turn > 1:
-        system_content += (
-            f"\n\n## Active Conversation Context (Turn {turn})\n"
-            + "\n".join(context_lines)
+        system_content += f"\n\n## Active Conversation Context (Turn {turn})\n" + "\n".join(
+            context_lines
         )
 
     messages = [SystemMessage(content=system_content)] + state["messages"]
@@ -205,7 +238,8 @@ async def verification_node(state: AgentState) -> dict[str, Any]:
             response_text = content
         elif isinstance(content, list):
             response_text = " ".join(
-                block.get("text", "") for block in content
+                block.get("text", "")
+                for block in content
                 if isinstance(block, dict) and block.get("type") == "text"
             )
 
@@ -251,6 +285,7 @@ def tool_result_collector_node(state: AgentState) -> dict[str, Any]:
 
 # ── Routing ───────────────────────────────────────────────────────────────────
 
+
 # Returns "tools" if the last LLM message contains tool_calls, otherwise routes to "verify".
 def should_use_tools(state: AgentState) -> str:
     """Route to tools if the LLM requested tool calls, else go to verification."""
@@ -269,6 +304,7 @@ def should_escalate(state: AgentState) -> str:
 
 
 # ── Nodes (continued) ─────────────────────────────────────────────────────────
+
 
 # Triggered on confirmed hallucination — replaces the agent response with a safe fallback and logs the event.
 async def escalation_node(state: AgentState) -> dict[str, Any]:
@@ -299,6 +335,7 @@ async def escalation_node(state: AgentState) -> dict[str, Any]:
 
 # ── Graph Assembly ────────────────────────────────────────────────────────────
 
+
 # Wires all nodes and edges into a compiled LangGraph StateGraph with an optional checkpointer.
 def build_graph(checkpointer=None):
     """
@@ -328,7 +365,7 @@ def build_graph(checkpointer=None):
         {"tools": "tools", "verify": "verify"},
     )
     graph.add_edge("tools", "collect_results")
-    graph.add_edge("collect_results", "reasoning")   # loop back for synthesis
+    graph.add_edge("collect_results", "reasoning")  # loop back for synthesis
 
     # After verification: either end cleanly or escalate on hallucination
     graph.add_conditional_edges(

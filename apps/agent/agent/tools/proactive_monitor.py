@@ -4,6 +4,7 @@ Tool: get_proactive_risk_monitor
 Standout feature: fires AUTOMATICALLY on session start.
 Checks for new risks since last session — tells you what changed, not just current state.
 """
+
 from __future__ import annotations
 
 import json
@@ -69,7 +70,9 @@ async def _proactive_monitor(prev_snap_json: str = "") -> dict[str, Any]:
                 "data_timestamp": datetime.now(UTC).isoformat(),
             }
 
-        total_value = sum(h.get("value", 0) or 0 for h in holdings.values())
+        total_value = sum(
+            h.get("valueInBaseCurrency", h.get("value", 0)) or 0 for h in holdings.values()
+        )
 
         # ── Build current snapshot ─────────────────────────────────
         current_snapshot = {
@@ -77,7 +80,9 @@ async def _proactive_monitor(prev_snap_json: str = "") -> dict[str, Any]:
             "position_count": len(holdings),
             "timestamp": datetime.now(UTC).isoformat(),
             "allocations": {
-                sym: round((h.get("value", 0) or 0) / total_value * 100, 2)
+                sym: round(
+                    (h.get("valueInBaseCurrency", h.get("value", 0)) or 0) / total_value * 100, 2
+                )
                 for sym, h in holdings.items()
             },
         }
@@ -97,25 +102,29 @@ async def _proactive_monitor(prev_snap_json: str = "") -> dict[str, Any]:
         # 1. Concentration alerts (current state)
         concentration_risks = []
         for sym, h in holdings.items():
-            val = h.get("value", 0) or 0
+            val = h.get("valueInBaseCurrency", h.get("value", 0)) or 0
             alloc = val / total_value * 100 if total_value > 0 else 0
             if alloc >= threshold * 100:
                 severity = "HIGH" if alloc >= 35 else "MEDIUM"
-                concentration_risks.append({
-                    "symbol": sym,
-                    "name": h.get("name", sym),
-                    "allocation": round(alloc, 2),
-                    "severity": severity,
-                })
-                alerts.append({
-                    "type": "CONCENTRATION",
-                    "severity": severity,
-                    "message": (
-                        f"{sym} is {alloc:.1f}% of your portfolio "
-                        f"(threshold: {threshold * 100:.0f}%)"
-                    ),
-                    "action": f"Consider trimming {sym} to reduce single-position risk",
-                })
+                concentration_risks.append(
+                    {
+                        "symbol": sym,
+                        "name": h.get("name", sym),
+                        "allocation": round(alloc, 2),
+                        "severity": severity,
+                    }
+                )
+                alerts.append(
+                    {
+                        "type": "CONCENTRATION",
+                        "severity": severity,
+                        "message": (
+                            f"{sym} is {alloc:.1f}% of your portfolio "
+                            f"(threshold: {threshold * 100:.0f}%)"
+                        ),
+                        "action": f"Consider trimming {sym} to reduce single-position risk",
+                    }
+                )
 
         # 2. Changes since last session
         changes_since_last = []
@@ -126,39 +135,45 @@ async def _proactive_monitor(prev_snap_json: str = "") -> dict[str, Any]:
             for sym, curr_pct in curr_allocs.items():
                 if sym in prev_allocs:
                     change = curr_pct - prev_allocs[sym]
-                    if abs(change) >= 2.0:   # flag 2%+ allocation shifts
-                        changes_since_last.append({
-                            "symbol": sym,
-                            "previous_pct": prev_allocs[sym],
-                            "current_pct": round(curr_pct, 2),
-                            "change_pp": round(change, 2),
-                            "direction": "INCREASED" if change > 0 else "DECREASED",
-                            "reason": "likely price movement (no new transactions detected)",
-                        })
+                    if abs(change) >= 2.0:  # flag 2%+ allocation shifts
+                        changes_since_last.append(
+                            {
+                                "symbol": sym,
+                                "previous_pct": prev_allocs[sym],
+                                "current_pct": round(curr_pct, 2),
+                                "change_pp": round(change, 2),
+                                "direction": "INCREASED" if change > 0 else "DECREASED",
+                                "reason": "likely price movement (no new transactions detected)",
+                            }
+                        )
                         # New threshold breach from price movement
                         if curr_pct >= threshold * 100 and prev_allocs[sym] < threshold * 100:
-                            alerts.append({
-                                "type": "NEW_CONCENTRATION_BREACH",
-                                "severity": "HIGH",
-                                "message": (
-                                    f"⚠️ {sym} crossed the {threshold * 100:.0f}% threshold since "
-                                    f"your last session ({prev_allocs[sym]:.1f}% → {curr_pct:.1f}%) "
-                                    f"due to price appreciation."
-                                ),
-                                "action": (
-                                    f"Review {sym} position — consider trimming to manage concentration"
-                                ),
-                            })
+                            alerts.append(
+                                {
+                                    "type": "NEW_CONCENTRATION_BREACH",
+                                    "severity": "HIGH",
+                                    "message": (
+                                        f"⚠️ {sym} crossed the {threshold * 100:.0f}% threshold since "
+                                        f"your last session ({prev_allocs[sym]:.1f}% → {curr_pct:.1f}%) "
+                                        f"due to price appreciation."
+                                    ),
+                                    "action": (
+                                        f"Review {sym} position — consider trimming to manage concentration"
+                                    ),
+                                }
+                            )
 
             # New positions added since last session
             new_syms = set(curr_allocs) - set(prev_allocs)
             for sym in new_syms:
-                changes_since_last.append({
-                    "symbol": sym,
-                    "change_pp": curr_allocs[sym],
-                    "direction": "NEW_POSITION",
-                    "message": f"New position added: {sym} ({curr_allocs[sym]:.1f}%)",
-                })
+                changes_since_last.append(
+                    {
+                        "symbol": sym,
+                        "change_pp": curr_allocs[sym],
+                        "direction": "NEW_POSITION",
+                        "message": f"New position added: {sym} ({curr_allocs[sym]:.1f}%)",
+                    }
+                )
 
             # Portfolio value change
             if "total_value" in prev_snapshot:
@@ -166,15 +181,17 @@ async def _proactive_monitor(prev_snap_json: str = "") -> dict[str, Any]:
                 val_change = total_value - prev_val
                 val_change_pct = (val_change / prev_val * 100) if prev_val > 0 else 0
                 if abs(val_change_pct) >= 2:
-                    changes_since_last.append({
-                        "symbol": "PORTFOLIO",
-                        "direction": "VALUE_CHANGE",
-                        "message": (
-                            f"Portfolio value {'increased' if val_change > 0 else 'decreased'} "
-                            f"by ${abs(val_change):,.0f} ({val_change_pct:+.1f}%) since last session"
-                        ),
-                        "change_pp": round(val_change_pct, 2),
-                    })
+                    changes_since_last.append(
+                        {
+                            "symbol": "PORTFOLIO",
+                            "direction": "VALUE_CHANGE",
+                            "message": (
+                                f"Portfolio value {'increased' if val_change > 0 else 'decreased'} "
+                                f"by ${abs(val_change):,.0f} ({val_change_pct:+.1f}%) since last session"
+                            ),
+                            "change_pp": round(val_change_pct, 2),
+                        }
+                    )
 
         # ── Overall risk level ─────────────────────────────────────
         high_alerts = sum(1 for a in alerts if a["severity"] == "HIGH")

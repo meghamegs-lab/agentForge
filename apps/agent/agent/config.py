@@ -9,6 +9,7 @@ CORS_ORIGINS in .env or shell accepts either format:
   Comma-separated:  CORS_ORIGINS=http://localhost:4200,https://localhost:4200
   JSON array:       CORS_ORIGINS=["http://localhost:4200","https://localhost:4200"]
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,6 +26,7 @@ _AGENT_DIR = Path(__file__).resolve().parent.parent
 
 
 # ── Custom env source that accepts comma-separated strings for list fields ─────
+
 
 class _CommaSeparatedListMixin:
     """
@@ -54,6 +56,7 @@ class _CSDotEnvSource(_CommaSeparatedListMixin, DotEnvSettingsSource):
 
 # ── Settings ───────────────────────────────────────────────────────────────────
 
+
 class Settings(BaseSettings):
     """
     Pydantic-settings v2 style — field names map to env var names
@@ -61,9 +64,9 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=str(_AGENT_DIR / ".env"),   # always reads apps/agent/.env
+        env_file=str(_AGENT_DIR / ".env"),  # always reads apps/agent/.env
         case_sensitive=False,
-        extra="ignore",          # silently ignore unknown env vars
+        extra="ignore",  # silently ignore unknown env vars
     )
 
     # ── LLM ──────────────────────────────────────────────────────────────────

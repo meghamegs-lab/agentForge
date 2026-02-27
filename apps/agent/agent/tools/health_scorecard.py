@@ -4,6 +4,7 @@ Tool: get_portfolio_health_scorecard
 Multi-step: calls holdings + performance + diversification, then synthesises an A-D grade.
 Standout: First tool to produce a graded scorecard with specific named action items.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -57,23 +58,26 @@ async def _scorecard() -> dict[str, Any]:
             }
 
         # ── Compute metrics ────────────────────────────────────────
-        total_value = sum(h.get("value", 0) or 0 for h in holdings.values())
+        total_value = sum(
+            h.get("valueInBaseCurrency", h.get("value", 0)) or 0 for h in holdings.values()
+        )
         num_positions = len(holdings)
 
         # Concentration: max single-position %
         max_alloc = (
             max(
-                (h.get("value", 0) or 0) / total_value * 100
+                (h.get("valueInBaseCurrency", h.get("value", 0)) or 0) / total_value * 100
                 for h in holdings.values()
             )
-            if total_value > 0 else 0
+            if total_value > 0
+            else 0
         )
 
         # Sector & asset class breakdown
         sectors: dict[str, float] = {}
         asset_classes: dict[str, float] = {}
         for h in holdings.values():
-            val = h.get("value", 0) or 0
+            val = h.get("valueInBaseCurrency", h.get("value", 0)) or 0
             for s in h.get("sectors", []):
                 sectors[s["name"]] = sectors.get(s["name"], 0) + val * s.get("weight", 1)
             ac = h.get("assetClass", "EQUITY")
@@ -81,12 +85,9 @@ async def _scorecard() -> dict[str, Any]:
 
         max_sector_pct = max((v / total_value * 100 for v in sectors.values()), default=0)
 
-        ytd_return = (
-            perf_data.get("performance", {}).get("ytd", {}).get("relativeChange", 0) * 100
-        )
-        one_y_return = (
-            perf_1y.get("performance", {}).get("1y", {}).get("relativeChange", 0) * 100
-        )
+        # v2 API returns a flat performance object — netPerformancePercentage is a decimal (0.12 = 12%)
+        ytd_return = perf_data.get("performance", {}).get("netPerformancePercentage", 0) * 100
+        one_y_return = perf_1y.get("performance", {}).get("netPerformancePercentage", 0) * 100
 
         # ── Scoring (0-100) ────────────────────────────────────────
         score = 100
@@ -109,9 +110,7 @@ async def _scorecard() -> dict[str, Any]:
             score -= 8
 
         # Only-equity penalty
-        equity_pct = (
-            asset_classes.get("EQUITY", 0) / total_value * 100 if total_value else 0
-        )
+        equity_pct = asset_classes.get("EQUITY", 0) / total_value * 100 if total_value else 0
         if equity_pct > 95:
             score -= 10
 
@@ -121,68 +120,89 @@ async def _scorecard() -> dict[str, Any]:
         # ── Risk flags ─────────────────────────────────────────────
         flags = []
         if max_alloc > 20:
-            top_sym = max(holdings.items(), key=lambda x: x[1].get("value", 0) or 0)[0]
-            flags.append({
-                "type": "CONCENTRATION",
-                "severity": "HIGH" if max_alloc > 35 else "MEDIUM",
-                "message": f"{top_sym} represents {max_alloc:.1f}% of portfolio",
-            })
+            top_sym = max(
+                holdings.items(),
+                key=lambda x: x[1].get("valueInBaseCurrency", x[1].get("value", 0)) or 0,
+            )[0]
+            flags.append(
+                {
+                    "type": "CONCENTRATION",
+                    "severity": "HIGH" if max_alloc > 35 else "MEDIUM",
+                    "message": f"{top_sym} represents {max_alloc:.1f}% of portfolio",
+                }
+            )
         if num_positions < 5:
-            flags.append({
-                "type": "UNDIVERSIFIED",
-                "severity": "HIGH",
-                "message": f"Only {num_positions} positions — very undiversified",
-            })
+            flags.append(
+                {
+                    "type": "UNDIVERSIFIED",
+                    "severity": "HIGH",
+                    "message": f"Only {num_positions} positions — very undiversified",
+                }
+            )
         if max_sector_pct > 40:
             top_sector = max(sectors.items(), key=lambda x: x[1])[0]
-            flags.append({
-                "type": "SECTOR_CONCENTRATION",
-                "severity": "MEDIUM",
-                "message": f"{top_sector} sector = {max_sector_pct:.1f}% of portfolio",
-            })
+            flags.append(
+                {
+                    "type": "SECTOR_CONCENTRATION",
+                    "severity": "MEDIUM",
+                    "message": f"{top_sector} sector = {max_sector_pct:.1f}% of portfolio",
+                }
+            )
         if equity_pct > 95:
-            flags.append({
-                "type": "NO_BONDS",
-                "severity": "LOW",
-                "message": "100% equity — consider adding bonds for volatility buffer",
-            })
+            flags.append(
+                {
+                    "type": "NO_BONDS",
+                    "severity": "LOW",
+                    "message": "100% equity — consider adding bonds for volatility buffer",
+                }
+            )
 
         # ── Action items (prioritised) ─────────────────────────────
         actions = []
         if max_alloc > 20:
-            actions.append({
-                "priority": 1,
-                "action": "Reduce largest position",
-                "detail": "Trim the position above 20% threshold to reduce concentration risk",
-            })
+            actions.append(
+                {
+                    "priority": 1,
+                    "action": "Reduce largest position",
+                    "detail": "Trim the position above 20% threshold to reduce concentration risk",
+                }
+            )
         if num_positions < 10:
-            actions.append({
-                "priority": 2,
-                "action": "Add more positions",
-                "detail": (
-                    f"Increase from {num_positions} to at least 10 holdings "
-                    "for meaningful diversification"
-                ),
-            })
+            actions.append(
+                {
+                    "priority": 2,
+                    "action": "Add more positions",
+                    "detail": (
+                        f"Increase from {num_positions} to at least 10 holdings "
+                        "for meaningful diversification"
+                    ),
+                }
+            )
         if max_sector_pct > 35:
             top_sector_name = max(sectors, key=lambda k: sectors[k])
-            actions.append({
-                "priority": 3,
-                "action": "Rebalance sector exposure",
-                "detail": f"Reduce {top_sector_name} sector below 30%",
-            })
+            actions.append(
+                {
+                    "priority": 3,
+                    "action": "Rebalance sector exposure",
+                    "detail": f"Reduce {top_sector_name} sector below 30%",
+                }
+            )
         if equity_pct > 95:
-            actions.append({
-                "priority": 4,
-                "action": "Add bond allocation",
-                "detail": "Consider 10-20% bonds/fixed income to reduce portfolio volatility",
-            })
+            actions.append(
+                {
+                    "priority": 4,
+                    "action": "Add bond allocation",
+                    "detail": "Consider 10-20% bonds/fixed income to reduce portfolio volatility",
+                }
+            )
         if not actions:
-            actions.append({
-                "priority": 1,
-                "action": "Maintain current allocation",
-                "detail": "Portfolio is well-structured. Review quarterly.",
-            })
+            actions.append(
+                {
+                    "priority": 1,
+                    "action": "Maintain current allocation",
+                    "detail": "Portfolio is well-structured. Review quarterly.",
+                }
+            )
 
         return {
             "status": "ok",
