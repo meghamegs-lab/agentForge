@@ -62,7 +62,9 @@ class TestHallucinationGuard:
     def test_flags_when_no_tool_called_but_financial_number_stated(self):
         _, flags = check_hallucination("AAPL is trading at $175.32 today.", [])
         assert any(f["type"] == "POTENTIAL_HALLUCINATION" for f in flags)
-        assert flags[0]["severity"] == "HIGH"
+        # No tools called → MEDIUM (advisory opinion); HIGH is reserved for
+        # the case where tools were called, all failed, yet LLM still cites numbers.
+        assert flags[0]["severity"] == "MEDIUM"
 
     def test_ignores_years_as_financial_numbers(self):
         tool_results = [{"data_timestamp": "2024-01-01T00:00:00Z"}]

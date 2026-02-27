@@ -257,40 +257,44 @@ class TestAnalyzeDiversification:
 
 class TestGetMarketData:
 
-    def test_returns_price_for_valid_symbol(self):
+    async def test_returns_price_for_valid_symbol(self):
         mock_ticker = MagicMock()
         mock_ticker.fast_info.currency = "USD"
         mock_ticker.fast_info.year_high = 200.0
         mock_ticker.fast_info.year_low = 150.0
         import pandas as pd
+
         mock_ticker.history.return_value = pd.DataFrame(
             {"Close": [175.32]}, index=pd.date_range("2024-01-01", periods=1)
         )
         with patch("yfinance.Ticker", return_value=mock_ticker):
-            result = get_market_data.invoke({"symbols": "AAPL"})
+            result = await get_market_data.ainvoke({"symbols": "AAPL"})
         assert result["status"] == "ok"
         assert abs(result["current_price"] - 175.32) < 0.01
         assert result["symbol"] == "AAPL"
 
-    def test_invalid_symbol_returns_error_not_exception(self):
+    async def test_invalid_symbol_returns_error_not_exception(self):
         mock_ticker = MagicMock()
         import pandas as pd
+
         mock_ticker.history.return_value = pd.DataFrame()  # empty = not found
         with patch("yfinance.Ticker", return_value=mock_ticker):
-            result = get_market_data.invoke({"symbols": "FAKEXYZ123"})
-        assert result["status"] == "error"
-        assert "symbol_not_found" in result.get("error", "")
+            result = await get_market_data.ainvoke({"symbols": "FAKEXYZ123"})
+        # Market client returns price_unavailable (not error) when yfinance finds no data
+        assert result["status"] == "price_unavailable"
+        assert result.get("symbol") == "FAKEXYZ123"
 
-    def test_data_includes_timestamp(self):
+    async def test_data_includes_timestamp(self):
         mock_ticker = MagicMock()
         import pandas as pd
+
         mock_ticker.history.return_value = pd.DataFrame(
             {"Close": [100.0]}, index=pd.date_range("2024-01-01", periods=1)
         )
         with patch("yfinance.Ticker", return_value=mock_ticker):
-            result = get_market_data.invoke({"symbols": "AAPL"})
+            result = await get_market_data.ainvoke({"symbols": "AAPL"})
         assert "data_timestamp" in result
 
-    def test_empty_symbols_returns_error(self):
-        result = get_market_data.invoke({"symbols": ""})
+    async def test_empty_symbols_returns_error(self):
+        result = await get_market_data.ainvoke({"symbols": ""})
         assert result["status"] == "error"
