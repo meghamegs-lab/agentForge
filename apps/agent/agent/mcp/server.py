@@ -39,33 +39,34 @@ import sys
 from typing import Any
 
 import structlog
+from mcp import types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp import types
-
-# ── Redirect all logging to stderr ────────────────────────────────────────────
-# stdout is reserved for the MCP JSON-RPC wire protocol.  Any bytes written to
-# stdout that are not valid JSON-RPC messages will corrupt the framing and cause
-# "Unexpected token" errors in the MCP host (Claude Desktop, Cursor, etc.).
-structlog.configure(
-    logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
-)
 
 # ── Import the underlying implementation functions directly ────────────────────
 # We use the private _get_* functions, NOT the @tool-decorated LangChain
 # versions.  This avoids LangGraph overhead and the "StructuredTool does not
 # support sync invocation" issue that surfaces in tests.
-from agent.tools.portfolio import _get_portfolio_summary
-from agent.tools.performance import _get_performance
-from agent.tools.transactions import _get_transactions
+from agent.clients.market import MarketDataClient
 from agent.tools.diversification import _analyze_diversification
 from agent.tools.fee_drag import _fee_drag
 from agent.tools.health_scorecard import _scorecard
-from agent.tools.rebalancing import _rebalancing_plan
 from agent.tools.market_context import _market_context
-from agent.tools.transaction_patterns import _transaction_patterns
+from agent.tools.performance import _get_performance
+from agent.tools.portfolio import _get_portfolio_summary
 from agent.tools.proactive_monitor import _proactive_monitor
-from agent.clients.market import MarketDataClient
+from agent.tools.rebalancing import _rebalancing_plan
+from agent.tools.transaction_patterns import _transaction_patterns
+from agent.tools.transactions import _get_transactions
+
+# ── Redirect all logging to stderr ────────────────────────────────────────────
+# stdout is reserved for the MCP JSON-RPC wire protocol.  Any bytes written to
+# stdout that are not valid JSON-RPC messages will corrupt the framing and cause
+# "Unexpected token" errors in the MCP host (Claude Desktop, Cursor, etc.).
+# Must run after imports so all structlog loggers inherit this factory.
+structlog.configure(
+    logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+)
 
 log = structlog.get_logger()
 

@@ -7,6 +7,20 @@ on:
   pull_request:
     branches:
       - 'main'
+    # Only rebuild the Ghostfolio Docker image when Ghostfolio source files
+    # actually changed. Agent-only PRs (apps/agent/**) are excluded so they
+    # don't trigger a full Docker build unnecessarily.
+    paths:
+      - 'apps/api/**'
+      - 'apps/client/**'
+      - 'libs/**'
+      - 'prisma/**'
+      - 'Dockerfile'
+      - 'docker/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'nx.json'
+      - 'tsconfig.base.json'
 
 jobs:
   build_and_push:
