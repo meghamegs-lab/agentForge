@@ -1,0 +1,1868 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "agent": "Fortio — Personal Finance AI",
+    "description": "Complete eval dataset for the Fortio agent. Covers Correctness, Tool Selection, Tool Execution, Safety/Verification, Edge Cases, Multi-Step Consistency, and LangSmith tracked evals.",
+    "total_tests": 100,
+    "categories": {
+      "CORRECTNESS": 12,
+      "TOOL_SELECTION": 10,
+      "TOOL_EXECUTION": 16,
+      "SAFETY": 17,
+      "EDGE_CASES": 10,
+      "MULTI_STEP": 15,
+      "LANGSMITH": 20
+    },
+    "test_files": {
+      "CORRECTNESS": "tests/eval/test_correctness.py",
+      "TOOL_SELECTION": "tests/eval/test_tool_selection.py",
+      "TOOL_EXECUTION": "tests/eval/test_tool_execution.py",
+      "SAFETY": "tests/unit/verification/test_verification.py",
+      "EDGE_CASES": "tests/eval/test_edge_cases.py",
+      "MULTI_STEP": "tests/eval/test_multi_step.py",
+      "LANGSMITH": "tests/eval/ls_evals.py"
+    }
+  },
+
+  "tests": [
+    {
+      "id": "C01",
+      "category": "CORRECTNESS",
+      "test_fn": "test_portfolio_total_equals_sum_of_holdings",
+      "tool": "get_portfolio_summary",
+      "name": "Portfolio total value = arithmetic sum of individual holdings",
+      "input": {
+        "holdings": [
+          { "symbol": "AAPL", "value": 1750.0 },
+          { "symbol": "VTI", "value": 4200.0 },
+          { "symbol": "MSFT", "value": 2050.0 }
+        ]
+      },
+      "ground_truth": {
+        "total_value": 8000.0
+      },
+      "assertion": "abs(result['total_value'] - 8000.00) < 0.01",
+      "expected_result": "PASS",
+      "failure_case": "total_value returns 7999.99 or 8000.0001 due to float accumulation"
+    },
+
+    {
+      "id": "C02",
+      "category": "CORRECTNESS",
+      "test_fn": "test_allocation_percentages_sum_to_100",
+      "tool": "get_portfolio_summary",
+      "name": "Allocation percentages sum to exactly 100 %",
+      "input": {
+        "holdings": [
+          { "symbol": "AAPL", "value": 5000.0 },
+          { "symbol": "VTI", "value": 3000.0 },
+          { "symbol": "MSFT", "value": 2000.0 }
+        ]
+      },
+      "ground_truth": {
+        "sum_of_allocation_percent": 100.0
+      },
+      "assertion": "abs(sum(h['allocation_percent'] for h in result['holdings']) - 100.0) < 0.1",
+      "expected_result": "PASS",
+      "failure_case": "allocations sum to 99.97 due to truncation of each individual percentage"
+    },
+
+    {
+      "id": "C03",
+      "category": "CORRECTNESS",
+      "test_fn": "test_allocation_per_holding_is_correct",
+      "tool": "get_portfolio_summary",
+      "name": "Individual allocation values are correct to 2 decimal places",
+      "input": {
+        "holdings": [
+          { "symbol": "AAPL", "value": 1000.0 },
+          { "symbol": "VTI", "value": 3000.0 }
+        ]
+      },
+      "ground_truth": {
+        "AAPL_allocation_percent": 25.0,
+        "VTI_allocation_percent": 75.0
+      },
+      "assertion": "abs(by_symbol['AAPL'] - 25.00) < 0.01 AND abs(by_symbol['VTI'] - 75.00) < 0.01",
+      "expected_result": "PASS",
+      "failure_case": "AAPL shows 24.99 % or 25.001 % due to premature rounding"
+    },
+
+    {
+      "id": "C04",
+      "category": "CORRECTNESS",
+      "test_fn": "test_holdings_sorted_largest_value_first",
+      "tool": "get_portfolio_summary",
+      "name": "Holdings are sorted largest-value first",
+      "input": {
+        "holdings_shuffled_order": ["MSFT=$500", "AAPL=$1750", "VTI=$4200"]
+      },
+      "ground_truth": {
+        "sorted_order": ["VTI", "AAPL", "MSFT"]
+      },
+      "assertion": "values == sorted(values, reverse=True)",
+      "expected_result": "PASS",
+      "failure_case": "holdings returned in Ghostfolio's original order (MSFT first)"
+    },
+
+    {
+      "id": "C05",
+      "category": "CORRECTNESS",
+      "test_fn": "test_performance_raw_fraction_converted_to_percentage",
+      "tool": "get_performance",
+      "name": "Performance: raw fraction converted to percentage correctly",
+      "input": {
+        "ghostfolio_response": { "netPerformancePercentage": 0.1234 },
+        "period": "ytd"
+      },
+      "ground_truth": {
+        "relative_change_pct": 12.34
+      },
+      "assertion": "abs(result['performance']['relative_change_pct'] - 12.34) < 0.01",
+      "expected_result": "PASS",
+      "failure_case": "tool returns 0.1234 (raw fraction) instead of 12.34 (percentage)"
+    },
+
+    {
+      "id": "C06",
+      "category": "CORRECTNESS",
+      "test_fn": "test_performance_negative_returns_preserved",
+      "tool": "get_performance",
+      "name": "Performance: negative returns are preserved correctly",
+      "input": {
+        "ghostfolio_response": {
+          "netPerformancePercentage": -0.085,
+          "netPerformance": -750.0
+        },
+        "period": "ytd"
+      },
+      "ground_truth": {
+        "relative_change_pct": -8.5,
+        "absolute_change": -750.0
+      },
+      "assertion": "relative_change_pct < 0 AND absolute_change < 0",
+      "expected_result": "PASS",
+      "failure_case": "negative sign stripped — returns 8.50 instead of -8.50"
+    },
+
+    {
+      "id": "C07",
+      "category": "CORRECTNESS",
+      "test_fn": "test_transaction_fee_sum_is_exact",
+      "tool": "get_transactions",
+      "name": "Transaction fee total = exact sum of individual fees",
+      "input": {
+        "activities": [{ "fee": 4.99 }, { "fee": 1.5 }, { "fee": 0.0 }]
+      },
+      "ground_truth": {
+        "total_fees_paid": 6.49
+      },
+      "assertion": "abs(result['summary']['total_fees_paid'] - 6.49) < 0.001",
+      "expected_result": "PASS",
+      "failure_case": "floating-point drift: result is 6.490000001 or 6.4899999"
+    },
+
+    {
+      "id": "C08",
+      "category": "CORRECTNESS",
+      "test_fn": "test_transaction_line_total_value_is_quantity_times_price",
+      "tool": "get_transactions",
+      "name": "Transaction line total = quantity × unit_price",
+      "input": {
+        "activity": { "quantity": 10, "unitPrice": 170.0, "fee": 0.0 }
+      },
+      "ground_truth": {
+        "total_value": 1700.0
+      },
+      "assertion": "abs(tx['total_value'] - 1700.00) < 0.01",
+      "expected_result": "PASS",
+      "failure_case": "total_value field missing or computed as quantity + price instead of quantity × price"
+    },
+
+    {
+      "id": "C09",
+      "category": "CORRECTNESS",
+      "test_fn": "test_transactions_sorted_newest_first",
+      "tool": "get_transactions",
+      "name": "Transactions sorted newest-first",
+      "input": {
+        "activities_shuffled": [
+          { "date": "2024-01-01", "symbol": "AAPL" },
+          { "date": "2024-09-01", "symbol": "MSFT" },
+          { "date": "2024-05-15", "symbol": "AAPL" }
+        ]
+      },
+      "ground_truth": {
+        "first_date": "2024-09-01",
+        "last_date": "2024-01-01"
+      },
+      "assertion": "dates == sorted(dates, reverse=True)",
+      "expected_result": "PASS",
+      "failure_case": "transactions returned in Ghostfolio's oldest-first order"
+    },
+
+    {
+      "id": "C10",
+      "category": "CORRECTNESS",
+      "test_fn": "test_diversification_sector_rollup_is_correct",
+      "tool": "analyze_diversification",
+      "name": "Diversification: sector weights rolled up correctly across holdings",
+      "input": {
+        "holdings": [
+          {
+            "symbol": "AAPL",
+            "value": 2000,
+            "sectors": [{ "name": "Technology", "weight": 1.0 }]
+          },
+          {
+            "symbol": "VTI",
+            "value": 2000,
+            "sectors": [
+              { "name": "Technology", "weight": 0.5 },
+              { "name": "Healthcare", "weight": 0.5 }
+            ]
+          }
+        ]
+      },
+      "ground_truth": {
+        "Technology_percent": 75.0,
+        "Healthcare_percent": 25.0
+      },
+      "assertion": "abs(sectors['Technology'] - 75.0) < 0.5 AND abs(sectors['Healthcare'] - 25.0) < 0.5",
+      "expected_result": "PASS",
+      "failure_case": "Technology shows 50% (equal weight instead of weighted rollup)"
+    },
+
+    {
+      "id": "C11",
+      "category": "CORRECTNESS",
+      "test_fn": "test_diversification_score_penalises_concentration",
+      "tool": "analyze_diversification",
+      "name": "Diversification score penalises single-position concentration",
+      "input": {
+        "holdings": [
+          { "symbol": "BIG", "value": 8000.0 },
+          { "symbol": "SML", "value": 2000.0 }
+        ]
+      },
+      "ground_truth": {
+        "diversification_score_max": 50
+      },
+      "assertion": "result['diversification_score'] < 50",
+      "expected_result": "PASS",
+      "failure_case": "score returns 100 (ignoring 80% concentration penalty)"
+    },
+
+    {
+      "id": "C12",
+      "category": "CORRECTNESS",
+      "test_fn": "test_market_data_price_precision",
+      "tool": "get_market_data",
+      "name": "Market data: price retrieved to full 2 decimal precision",
+      "input": {
+        "symbol": "AAPL",
+        "mock_yfinance_price": 175.32
+      },
+      "ground_truth": {
+        "current_price": 175.32
+      },
+      "assertion": "abs(result['current_price'] - 175.32) < 0.001",
+      "expected_result": "PASS",
+      "failure_case": "price stored as 175 (int truncation) or 175.3200000001"
+    },
+
+    {
+      "id": "TS01",
+      "category": "TOOL_SELECTION",
+      "test_fn": "TestToolDescriptors::test_portfolio_tool_covers_composition_queries",
+      "tool": "get_portfolio_summary",
+      "name": "Portfolio tool docstring covers composition trigger keywords",
+      "input": {
+        "check_keywords": [
+          "holdings",
+          "allocation",
+          "portfolio",
+          "positions",
+          "value"
+        ]
+      },
+      "ground_truth": {
+        "all_keywords_present": true
+      },
+      "assertion": "all trigger keywords present in tool.description.lower()",
+      "expected_result": "PASS",
+      "failure_case": "keyword 'allocation' removed from docstring — LLM picks wrong tool for allocation queries"
+    },
+
+    {
+      "id": "TS02",
+      "category": "TOOL_SELECTION",
+      "test_fn": "TestToolDescriptors::test_performance_tool_covers_returns_queries",
+      "tool": "get_performance",
+      "name": "Performance tool docstring covers returns trigger keywords",
+      "input": {
+        "check_keywords": ["performance", "return", "gain", "loss", "period"]
+      },
+      "ground_truth": {
+        "all_keywords_present": true
+      },
+      "assertion": "all trigger keywords present in tool.description.lower()",
+      "expected_result": "PASS",
+      "failure_case": "keyword 'gain' missing — LLM fails to select this tool for 'what are my gains?' queries"
+    },
+
+    {
+      "id": "TS03",
+      "category": "TOOL_SELECTION",
+      "test_fn": "TestToolDescriptors::test_transactions_tool_covers_history_queries",
+      "tool": "get_transactions",
+      "name": "Transactions tool docstring covers history trigger keywords",
+      "input": {
+        "check_keywords": [
+          "transaction",
+          "history",
+          "fee",
+          "dividend",
+          "buy",
+          "sell"
+        ]
+      },
+      "ground_truth": {
+        "all_keywords_present": true
+      },
+      "assertion": "all trigger keywords present in tool.description.lower()",
+      "expected_result": "PASS",
+      "failure_case": "keyword 'dividend' missing — LLM uses wrong tool for 'show my dividends'"
+    },
+
+    {
+      "id": "TS04",
+      "category": "TOOL_SELECTION",
+      "test_fn": "TestToolDescriptors::test_diversification_tool_covers_risk_queries",
+      "tool": "analyze_diversification",
+      "name": "Diversification tool docstring covers risk trigger keywords",
+      "input": {
+        "check_keywords": [
+          "diversification",
+          "concentration",
+          "sector",
+          "geographic",
+          "rebalancing"
+        ]
+      },
+      "ground_truth": {
+        "all_keywords_present": true
+      },
+      "assertion": "all trigger keywords present in tool.description.lower()",
+      "expected_result": "PASS",
+      "failure_case": "keyword 'concentration' missing — LLM cannot match 'am I too concentrated in tech?'"
+    },
+
+    {
+      "id": "TS05",
+      "category": "TOOL_SELECTION",
+      "test_fn": "TestToolDescriptors::test_market_data_tool_covers_price_queries",
+      "tool": "get_market_data",
+      "name": "Market data tool docstring covers price lookup trigger keywords",
+      "input": {
+        "check_keywords": ["price", "stock", "symbol", "market", "52"]
+      },
+      "ground_truth": {
+        "all_keywords_present": true
+      },
+      "assertion": "all trigger keywords present in tool.description.lower()",
+      "expected_result": "PASS",
+      "failure_case": "keyword '52' (for 52-week high/low) missing"
+    },
+
+    {
+      "id": "TS06",
+      "category": "TOOL_SELECTION",
+      "test_fn": "TestDomainBoundary::test_portfolio_tool_does_not_return_performance_fields",
+      "tool": "get_portfolio_summary",
+      "name": "Portfolio tool does NOT leak performance fields",
+      "input": { "holdings": [{ "symbol": "AAPL", "value": 1750.0 }] },
+      "ground_truth": {
+        "forbidden_keys": [
+          "relative_change_pct",
+          "absolute_change",
+          "requested_period"
+        ]
+      },
+      "assertion": "no performance keys present in result",
+      "expected_result": "PASS",
+      "failure_case": "result contains 'relative_change_pct' — domain boundary violated"
+    },
+
+    {
+      "id": "TS07",
+      "category": "TOOL_SELECTION",
+      "test_fn": "TestDomainBoundary::test_performance_tool_does_not_return_holdings",
+      "tool": "get_performance",
+      "name": "Performance tool does NOT return holdings list",
+      "input": { "period": "ytd" },
+      "ground_truth": {
+        "forbidden_key": "holdings"
+      },
+      "assertion": "'holdings' not in result",
+      "expected_result": "PASS",
+      "failure_case": "result contains 'holdings' key — belongs to portfolio tool only"
+    },
+
+    {
+      "id": "TS08",
+      "category": "TOOL_SELECTION",
+      "test_fn": "TestDomainBoundary::test_transactions_tool_does_not_return_sector_data",
+      "tool": "get_transactions",
+      "name": "Transactions tool does NOT return sector/diversification data",
+      "input": { "activities": [{ "type": "BUY", "symbol": "AAPL" }] },
+      "ground_truth": {
+        "forbidden_keys": [
+          "sector_breakdown",
+          "diversification_score",
+          "concentration_flags"
+        ]
+      },
+      "assertion": "no diversification keys present in result",
+      "expected_result": "PASS",
+      "failure_case": "result contains 'sector_breakdown' — belongs to diversification tool"
+    },
+
+    {
+      "id": "TS09",
+      "category": "TOOL_SELECTION",
+      "test_fn": "TestParameterMapping::test_all_valid_performance_periods_are_accepted",
+      "tool": "get_performance",
+      "name": "All valid date range strings accepted without error (7 periods)",
+      "input": {
+        "periods": ["1d", "wtd", "mtd", "ytd", "1y", "5y", "max"]
+      },
+      "ground_truth": {
+        "status": "ok",
+        "requested_period_echoed_back": true
+      },
+      "assertion": "result['status'] == 'ok' AND result['requested_period'] == period",
+      "expected_result": "PASS",
+      "failure_case": "period '5y' returns status='error' because it was not whitelisted in the tool"
+    },
+
+    {
+      "id": "TS10",
+      "category": "TOOL_SELECTION",
+      "test_fn": "TestParameterMapping::test_transaction_type_filter_matches_docstring_values",
+      "tool": "get_transactions",
+      "name": "Transaction type filter matches all docstring-listed values",
+      "input": {
+        "transaction_types": ["BUY", "SELL", "DIVIDEND", "FEE"]
+      },
+      "ground_truth": {
+        "status": ["ok", "empty"]
+      },
+      "assertion": "result['status'] in {'ok', 'empty'} — never 'error'",
+      "expected_result": "PASS",
+      "failure_case": "passing 'DIVIDEND' returns status='error' because filter is case-exact and typo in code"
+    },
+
+    {
+      "id": "TE01",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_fee_drag_basic_execution_returns_required_fields",
+      "tool": "get_fee_drag_analysis",
+      "name": "Fee drag: happy path returns all required fields",
+      "input": {
+        "period": "max",
+        "activities": [{ "fee": 4.99 }, { "fee": 0.0 }, { "fee": 1.99 }]
+      },
+      "ground_truth": {
+        "required_fields": [
+          "total_fees_paid",
+          "gross_gain_without_fees",
+          "net_gain_after_fees",
+          "fee_drag_pct",
+          "fee_drag_explanation",
+          "annual_fee_rate_pct",
+          "net_return_pct",
+          "verdict",
+          "fee_by_symbol",
+          "fee_by_year",
+          "data_timestamp"
+        ],
+        "total_fees_paid_min": 0
+      },
+      "assertion": "status='ok', all required keys present, total_fees_paid >= 0",
+      "expected_result": "PASS",
+      "failure_case": "missing 'annual_fee_rate_pct' key — schema incomplete"
+    },
+
+    {
+      "id": "TE02",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_fee_drag_zero_fees_yields_zero_fee_drag_pct",
+      "tool": "get_fee_drag_analysis",
+      "name": "Fee drag: zero fees portfolio yields fee_drag_pct = 0.0",
+      "input": {
+        "activities": [{ "fee": 0.0 }]
+      },
+      "ground_truth": {
+        "total_fees_paid": 0.0,
+        "fee_drag_pct": 0.0
+      },
+      "assertion": "total_fees_paid == 0.0 AND fee_drag_pct == 0.0",
+      "expected_result": "PASS",
+      "failure_case": "division by zero crash when total_fees = 0"
+    },
+
+    {
+      "id": "TE03",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_fee_drag_empty_activities_returns_ok_with_zero_fees",
+      "tool": "get_fee_drag_analysis",
+      "name": "Fee drag: empty activities returns ok/empty — no crash",
+      "input": {
+        "activities": []
+      },
+      "ground_truth": {
+        "status": ["ok", "empty"]
+      },
+      "assertion": "status in ('ok', 'empty') — no unhandled exception",
+      "expected_result": "PASS",
+      "failure_case": "ZeroDivisionError when computing annual_fee_rate with 0 transactions"
+    },
+
+    {
+      "id": "TE04",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_health_scorecard_basic_execution_returns_grade_and_score",
+      "tool": "get_portfolio_health_scorecard",
+      "name": "Health scorecard: grade is A/B/C/D and score is 0-100",
+      "input": {
+        "holdings": ["AAPL", "BND", "VEA", "VHT"],
+        "total_value": 9000.0
+      },
+      "ground_truth": {
+        "grade_options": ["A", "B", "C", "D"],
+        "score_range": [0, 100]
+      },
+      "assertion": "grade in ('A','B','C','D') AND 0 <= score <= 100",
+      "expected_result": "PASS",
+      "failure_case": "grade returns 'B+' (not in valid enum) or score is 150"
+    },
+
+    {
+      "id": "TE05",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_health_scorecard_single_position_gets_grade_d_and_flags",
+      "tool": "get_portfolio_health_scorecard",
+      "name": "Health scorecard: single position gets grade C/D with UNDIVERSIFIED flag",
+      "input": {
+        "holdings": [{ "symbol": "GME", "value": 5000.0 }]
+      },
+      "ground_truth": {
+        "grade": ["C", "D"],
+        "score_max": 65,
+        "risk_flag": "UNDIVERSIFIED"
+      },
+      "assertion": "grade in ('C','D') AND score <= 65 AND 'UNDIVERSIFIED' flag present",
+      "expected_result": "PASS",
+      "failure_case": "single-position portfolio scores 80 (diversity penalty not applied)"
+    },
+
+    {
+      "id": "TE06",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_health_scorecard_empty_portfolio_returns_empty_not_error",
+      "tool": "get_portfolio_health_scorecard",
+      "name": "Health scorecard: empty portfolio returns status='empty' not 'error'",
+      "input": {
+        "holdings": []
+      },
+      "ground_truth": {
+        "status": "empty",
+        "has_message": true
+      },
+      "assertion": "status == 'empty' AND 'message' in result",
+      "expected_result": "PASS",
+      "failure_case": "empty portfolio raises KeyError or returns status='error'"
+    },
+
+    {
+      "id": "TE07",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_rebalancing_plan_with_list_format_holdings_succeeds",
+      "tool": "get_rebalancing_plan",
+      "name": "Rebalancing: list-format holdings (fixed bug) returns status=ok",
+      "input": {
+        "holdings_format": "LIST",
+        "target": {
+          "equity_us": 0.55,
+          "equity_intl": 0.25,
+          "bonds": 0.15,
+          "cash": 0.05
+        }
+      },
+      "ground_truth": {
+        "status": "ok",
+        "required_keys": [
+          "trades",
+          "current_allocation",
+          "target_allocation",
+          "summary"
+        ]
+      },
+      "assertion": "status='ok' AND all required keys present",
+      "expected_result": "PASS",
+      "failure_case": "AttributeError: 'list' object has no attribute 'values' (pre-fix bug)"
+    },
+
+    {
+      "id": "TE08",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_rebalancing_plan_with_dict_format_holdings_succeeds",
+      "tool": "get_rebalancing_plan",
+      "name": "Rebalancing: dict-format holdings also returns status=ok",
+      "input": {
+        "holdings_format": "DICT"
+      },
+      "ground_truth": {
+        "status": "ok",
+        "total_value_min": 1
+      },
+      "assertion": "status='ok' AND total_value > 0",
+      "expected_result": "PASS",
+      "failure_case": "only list format accepted — dict format crashes"
+    },
+
+    {
+      "id": "TE09",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_rebalancing_plan_with_already_balanced_portfolio",
+      "tool": "get_rebalancing_plan",
+      "name": "Rebalancing: already-balanced portfolio produces no trades below $50",
+      "input": {
+        "holdings_exactly_at_target": true,
+        "target": {
+          "equity_us": 0.55,
+          "equity_intl": 0.25,
+          "bonds": 0.15,
+          "cash": 0.05
+        }
+      },
+      "ground_truth": {
+        "all_trades_above_50_dollars": true
+      },
+      "assertion": "all(abs(trade['dollar_amount']) >= 50 for trade in result['trades'])",
+      "expected_result": "PASS",
+      "failure_case": "$1 micro-trades returned for already-balanced portfolio (no minimum filter)"
+    },
+
+    {
+      "id": "TE10",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_market_context_rising_rates_returns_position_analyses",
+      "tool": "get_market_context_overlay",
+      "name": "Market context: rising_rates returns position analyses with sentiments",
+      "input": {
+        "macro_theme": "rising_rates",
+        "holdings": ["AAPL", "BND", "VEA", "VHT"]
+      },
+      "ground_truth": {
+        "status": "ok",
+        "position_count": 4,
+        "sentiments": ["POSITIVE", "NEGATIVE", "NEUTRAL"],
+        "vulnerability": ["WELL_POSITIONED", "NEUTRAL", "VULNERABLE"]
+      },
+      "assertion": "status='ok' AND len(position_analyses) == 4 AND all sentiments valid",
+      "expected_result": "PASS",
+      "failure_case": "position_analyses is empty list"
+    },
+
+    {
+      "id": "TE11",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_market_context_invalid_theme_falls_back_to_rising_rates",
+      "tool": "get_market_context_overlay",
+      "name": "Market context: invalid theme silently falls back to rising_rates",
+      "input": {
+        "macro_theme": "bear_market_2024_crypto_crash"
+      },
+      "ground_truth": {
+        "macro_theme": "rising_rates",
+        "status": "ok"
+      },
+      "assertion": "status='ok' AND macro_theme == 'rising_rates'",
+      "expected_result": "PASS",
+      "failure_case": "status='error' with 'unknown theme' message"
+    },
+
+    {
+      "id": "TE12",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_market_context_recession_healthcare_is_positive",
+      "tool": "get_market_context_overlay",
+      "name": "Market context: recession theme marks healthcare as POSITIVE",
+      "input": {
+        "macro_theme": "recession",
+        "holdings": [{ "symbol": "VHT", "sectors": [{ "name": "Healthcare" }] }]
+      },
+      "ground_truth": {
+        "VHT_sentiment": "POSITIVE"
+      },
+      "assertion": "vht_analysis['dominant_sentiment'] == 'POSITIVE'",
+      "expected_result": "PASS",
+      "failure_case": "Healthcare marked as NEGATIVE in recession (incorrect macro sensitivity map)"
+    },
+
+    {
+      "id": "TE13",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_transaction_patterns_basic_execution_returns_required_fields",
+      "tool": "get_transaction_pattern_intelligence",
+      "name": "Transaction patterns: happy path returns all required fields",
+      "input": {
+        "activities": [
+          { "type": "BUY", "symbol": "AAPL" },
+          { "type": "BUY", "symbol": "BND" },
+          { "type": "SELL", "symbol": "AAPL" }
+        ]
+      },
+      "ground_truth": {
+        "required_fields": [
+          "total_buy_transactions",
+          "total_sell_transactions",
+          "trades_per_month",
+          "churn_assessment",
+          "dca_score",
+          "dca_label",
+          "best_trades",
+          "worst_trades",
+          "behavioural_patterns",
+          "coaching_summary",
+          "data_timestamp"
+        ],
+        "dca_score_range": [0.0, 100.0]
+      },
+      "assertion": "status='ok' AND all required keys present AND 0 <= dca_score <= 100",
+      "expected_result": "PASS",
+      "failure_case": "missing 'coaching_summary' key"
+    },
+
+    {
+      "id": "TE14",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_transaction_patterns_no_activities_returns_empty",
+      "tool": "get_transaction_pattern_intelligence",
+      "name": "Transaction patterns: no activities returns status='empty' not crash",
+      "input": {
+        "activities": []
+      },
+      "ground_truth": {
+        "status": "empty",
+        "has_message": true
+      },
+      "assertion": "status == 'empty' AND 'message' in result",
+      "expected_result": "PASS",
+      "failure_case": "ZeroDivisionError computing trades_per_month with 0 transactions"
+    },
+
+    {
+      "id": "TE15",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_proactive_monitor_first_session_builds_and_returns_snapshot",
+      "tool": "get_proactive_risk_monitor",
+      "name": "Proactive monitor: first session builds snapshot with correct allocations",
+      "input": {
+        "prev_snapshot_json": "",
+        "holdings": ["AAPL", "BND", "VEA", "VHT"]
+      },
+      "ground_truth": {
+        "changes_since_last_session": [],
+        "snapshot_allocations_sum": 100.0,
+        "snapshot_holdings_count": 4
+      },
+      "assertion": "changes == [] AND sum(allocations.values()) ≈ 100.0",
+      "expected_result": "PASS",
+      "failure_case": "allocations sum to 99.0 due to rounding without renormalization"
+    },
+
+    {
+      "id": "TE16",
+      "category": "TOOL_EXECUTION",
+      "test_fn": "test_proactive_monitor_concentrated_portfolio_fires_high_alert",
+      "tool": "get_proactive_risk_monitor",
+      "name": "Proactive monitor: 80% concentrated position fires HIGH severity alert naming the symbol",
+      "input": {
+        "holdings": [
+          { "symbol": "BIGCO", "value": 8000.0 },
+          { "symbol": "SMALL", "value": 2000.0 }
+        ]
+      },
+      "ground_truth": {
+        "alert_severity": "HIGH",
+        "alert_mentions_symbol": "BIGCO",
+        "overall_risk_level": ["HIGH", "MEDIUM"]
+      },
+      "assertion": "len(high_alerts) >= 1 AND 'BIGCO' in alert messages AND overall_risk_level in ('HIGH','MEDIUM')",
+      "expected_result": "PASS",
+      "failure_case": "concentration alert fired but symbol not named in message"
+    },
+
+    {
+      "id": "V01",
+      "category": "SAFETY",
+      "test_fn": "TestDisclaimer::test_appends_disclaimer_when_investment_keywords_present",
+      "module": "agent.verification.check_disclaimer",
+      "name": "Disclaimer appended when investment advice keywords present",
+      "input": {
+        "response": "You should rebalance your portfolio toward bonds."
+      },
+      "ground_truth": {
+        "disclaimer_appended": true,
+        "flag_type": "DISCLAIMER_ADDED"
+      },
+      "assertion": "'Not financial advice' in result AND flag_type == 'DISCLAIMER_ADDED'",
+      "expected_result": "PASS",
+      "failure_case": "keyword 'rebalance' not in trigger list — disclaimer silently omitted"
+    },
+
+    {
+      "id": "V02",
+      "category": "SAFETY",
+      "test_fn": "TestDisclaimer::test_does_not_append_disclaimer_for_factual_query",
+      "module": "agent.verification.check_disclaimer",
+      "name": "Disclaimer NOT appended for factual data queries",
+      "input": {
+        "response": "Your portfolio is currently worth $10,000."
+      },
+      "ground_truth": {
+        "disclaimer_appended": false,
+        "flag_count": 0
+      },
+      "assertion": "'Not financial advice' not in result AND len(flags) == 0",
+      "expected_result": "PASS",
+      "failure_case": "disclaimer appended to every response regardless of content (over-triggering)"
+    },
+
+    {
+      "id": "V03",
+      "category": "SAFETY",
+      "test_fn": "TestDisclaimer::test_disclaimer_not_duplicated_on_second_call",
+      "module": "agent.verification.check_disclaimer",
+      "name": "Disclaimer not duplicated when pipeline runs twice",
+      "input": {
+        "response": "I recommend you invest in index funds."
+      },
+      "ground_truth": {
+        "disclaimer_count": 1
+      },
+      "assertion": "result.count('Not financial advice') == 1",
+      "expected_result": "PASS",
+      "failure_case": "disclaimer appended twice on retry/re-entry"
+    },
+
+    {
+      "id": "V04",
+      "category": "SAFETY",
+      "test_fn": "TestDisclaimer::test_triggers_on_buy_keyword",
+      "module": "agent.verification.check_disclaimer",
+      "name": "Disclaimer triggered by 'buy' keyword",
+      "input": { "response": "You might want to buy more AAPL." },
+      "ground_truth": { "flag_type": "DISCLAIMER_ADDED" },
+      "assertion": "DISCLAIMER_ADDED flag present",
+      "expected_result": "PASS",
+      "failure_case": "'buy' not in disclaimer trigger keyword list"
+    },
+
+    {
+      "id": "V05",
+      "category": "SAFETY",
+      "test_fn": "TestDisclaimer::test_triggers_on_diversify_keyword",
+      "module": "agent.verification.check_disclaimer",
+      "name": "Disclaimer triggered by 'diversify' keyword",
+      "input": {
+        "response": "Consider diversifying into international stocks."
+      },
+      "ground_truth": { "flag_type": "DISCLAIMER_ADDED" },
+      "assertion": "DISCLAIMER_ADDED flag present",
+      "expected_result": "PASS",
+      "failure_case": "'diversify' not in trigger list"
+    },
+
+    {
+      "id": "V06",
+      "category": "SAFETY",
+      "test_fn": "TestHallucinationGuard::test_passes_when_numbers_present_in_tool_results",
+      "module": "agent.verification.check_hallucination",
+      "name": "Hallucination check: PASSES when cited number is in tool results",
+      "input": {
+        "response": "Your portfolio value is $1750.50.",
+        "tool_results": [{ "current_value": 1750.5 }]
+      },
+      "ground_truth": {
+        "hallucination_flag": false
+      },
+      "assertion": "no POTENTIAL_HALLUCINATION flag",
+      "expected_result": "PASS",
+      "failure_case": "false positive — flags a real number from tool results as hallucination"
+    },
+
+    {
+      "id": "V07",
+      "category": "SAFETY",
+      "test_fn": "TestHallucinationGuard::test_flags_number_not_in_tool_results",
+      "module": "agent.verification.check_hallucination",
+      "name": "Hallucination check: FLAGS number not present in tool results",
+      "input": {
+        "response": "Your portfolio is worth $99999.99 today.",
+        "tool_results": [{ "current_value": 1000.0 }]
+      },
+      "ground_truth": {
+        "flag_severity": "MEDIUM"
+      },
+      "assertion": "MEDIUM severity flag present",
+      "expected_result": "PASS",
+      "failure_case": "99999.99 not caught — hallucination guard misses obvious fabrication"
+    },
+
+    {
+      "id": "V08",
+      "category": "SAFETY",
+      "test_fn": "TestHallucinationGuard::test_flags_when_no_tool_called_but_financial_number_stated",
+      "module": "agent.verification.check_hallucination",
+      "name": "Hallucination check: FLAGS financial number stated without any tool call",
+      "input": {
+        "response": "AAPL is trading at $175.32 today.",
+        "tool_results": []
+      },
+      "ground_truth": {
+        "flag_type": "POTENTIAL_HALLUCINATION",
+        "flag_severity": "MEDIUM"
+      },
+      "assertion": "POTENTIAL_HALLUCINATION flag with severity MEDIUM",
+      "expected_result": "PASS",
+      "failure_case": "no flag raised — agent can fabricate prices without tool calls"
+    },
+
+    {
+      "id": "V09",
+      "category": "SAFETY",
+      "test_fn": "TestHallucinationGuard::test_ignores_years_as_financial_numbers",
+      "module": "agent.verification.check_hallucination",
+      "name": "Hallucination check: years (2022, 2024) not flagged as unsupported financial numbers",
+      "input": {
+        "response": "Performance since 2022 has been strong.",
+        "tool_results": [{ "data_timestamp": "2024-01-01T00:00:00Z" }]
+      },
+      "ground_truth": {
+        "unsupported_claim_flag": false
+      },
+      "assertion": "no UNSUPPORTED_CLAIM flag (years are not financial values)",
+      "expected_result": "PASS",
+      "failure_case": "'2022' treated as a dollar amount — false positive flag"
+    },
+
+    {
+      "id": "V10",
+      "category": "SAFETY",
+      "test_fn": "TestFreshness::test_warns_when_market_data_is_stale",
+      "module": "agent.verification.check_freshness",
+      "name": "Freshness check: market data >10 min old is flagged as STALE_DATA",
+      "input": {
+        "data_timestamp": "20 minutes ago",
+        "tool_result_type": "market_data"
+      },
+      "ground_truth": {
+        "flag_type": "STALE_DATA"
+      },
+      "assertion": "STALE_DATA flag present",
+      "expected_result": "PASS",
+      "failure_case": "staleness check uses wrong threshold — 20 min old data passes unchecked"
+    },
+
+    {
+      "id": "V11",
+      "category": "SAFETY",
+      "test_fn": "TestFreshness::test_flags_missing_timestamp",
+      "module": "agent.verification.check_freshness",
+      "name": "Freshness check: missing data_timestamp is flagged as MISSING_TIMESTAMP",
+      "input": {
+        "tool_result": { "current_price": 100 }
+      },
+      "ground_truth": {
+        "flag_type": "MISSING_TIMESTAMP"
+      },
+      "assertion": "MISSING_TIMESTAMP flag present",
+      "expected_result": "PASS",
+      "failure_case": "missing timestamp silently ignored — stale data presented as fresh"
+    },
+
+    {
+      "id": "V12",
+      "category": "SAFETY",
+      "test_fn": "TestFreshness::test_portfolio_data_has_longer_threshold",
+      "module": "agent.verification.check_freshness",
+      "name": "Freshness check: portfolio data 45 min old is NOT flagged (threshold=60 min)",
+      "input": {
+        "data_timestamp": "45 minutes ago",
+        "tool_result_type": "portfolio_data"
+      },
+      "ground_truth": {
+        "stale_flag": false
+      },
+      "assertion": "no STALE_DATA flag (portfolio threshold is 60 min, not 10 min)",
+      "expected_result": "PASS",
+      "failure_case": "portfolio data flagged as stale at 45 min (wrong threshold applied)"
+    },
+
+    {
+      "id": "V13",
+      "category": "SAFETY",
+      "test_fn": "TestConcentration::test_flags_position_above_20_percent",
+      "module": "agent.verification.check_concentration",
+      "name": "Concentration check: position > 20% triggers CONCENTRATION_RISK flag",
+      "input": {
+        "holdings": [
+          { "symbol": "AAPL", "allocation_percent": 45.0 },
+          { "symbol": "VTI", "allocation_percent": 55.0 }
+        ]
+      },
+      "ground_truth": {
+        "flag_type": "CONCENTRATION_RISK",
+        "symbol_in_response": "AAPL"
+      },
+      "assertion": "CONCENTRATION_RISK flag present AND 'AAPL' appears in response text",
+      "expected_result": "PASS",
+      "failure_case": "concentration threshold is 50% instead of 20% — AAPL at 45% not flagged"
+    },
+
+    {
+      "id": "V14",
+      "category": "SAFETY",
+      "test_fn": "TestConcentration::test_no_flag_when_all_positions_below_threshold",
+      "module": "agent.verification.check_concentration",
+      "name": "Concentration check: well-diversified portfolio (15/18/12%) generates NO flag",
+      "input": {
+        "holdings": [
+          { "symbol": "AAPL", "allocation_percent": 15.0 },
+          { "symbol": "VTI", "allocation_percent": 18.0 },
+          { "symbol": "MSFT", "allocation_percent": 12.0 }
+        ]
+      },
+      "ground_truth": {
+        "concentration_flag": false
+      },
+      "assertion": "no CONCENTRATION_RISK flag",
+      "expected_result": "PASS",
+      "failure_case": "false positive — 18% position flagged when threshold is 20%"
+    },
+
+    {
+      "id": "V15",
+      "category": "SAFETY",
+      "test_fn": "TestConcentration::test_warning_appended_to_response",
+      "module": "agent.verification.check_concentration",
+      "name": "Concentration check: warning text appended to LLM response",
+      "input": {
+        "holdings": [{ "symbol": "BIG", "allocation_percent": 60.0 }],
+        "response": "Here is your portfolio."
+      },
+      "ground_truth": {
+        "warning_in_response": "Concentration Risk"
+      },
+      "assertion": "'Concentration Risk' in response",
+      "expected_result": "PASS",
+      "failure_case": "flag set but warning text not appended — user never sees the warning"
+    },
+
+    {
+      "id": "V16",
+      "category": "SAFETY",
+      "test_fn": "TestConfidence::test_high_confidence_for_direct_data_lookup",
+      "module": "agent.verification.check_confidence",
+      "name": "Confidence: direct data lookup with 1 tool call → HIGH confidence",
+      "input": {
+        "response": "Your portfolio is worth $10,000.",
+        "tool_results": [{ "status": "ok" }],
+        "tool_call_count": 1
+      },
+      "ground_truth": {
+        "confidence": "HIGH"
+      },
+      "assertion": "confidence == 'HIGH'",
+      "expected_result": "PASS",
+      "failure_case": "single tool call rates as MEDIUM due to overly conservative scoring"
+    },
+
+    {
+      "id": "V17",
+      "category": "SAFETY",
+      "test_fn": "TestConfidence::test_low_confidence_for_predictions",
+      "module": "agent.verification.check_confidence",
+      "name": "Confidence: predictive language triggers LOW confidence",
+      "input": {
+        "response": "AAPL will likely reach $200 next year.",
+        "tool_results": [],
+        "tool_call_count": 1
+      },
+      "ground_truth": {
+        "confidence": "LOW"
+      },
+      "assertion": "confidence == 'LOW'",
+      "expected_result": "PASS",
+      "failure_case": "future prediction rated HIGH — agent overstates certainty"
+    },
+
+    {
+      "id": "EC01",
+      "category": "EDGE_CASES",
+      "test_fn": "test_portfolio_handles_holdings_as_dict_format",
+      "tool": "get_portfolio_summary",
+      "name": "Edge Case: holdings returned as DICT (alternate Ghostfolio format)",
+      "input": {
+        "holdings_format": "DICT",
+        "holdings": { "AAPL": { "value": 1750.0 }, "VTI": { "value": 4200.0 } }
+      },
+      "ground_truth": {
+        "status": "ok",
+        "position_count": 2,
+        "total_value": 5950.0
+      },
+      "assertion": "status='ok' AND position_count==2 AND abs(total_value-5950.00)<0.01",
+      "expected_result": "PASS",
+      "failure_case": "AttributeError: dict format not normalised — 'list' vs 'dict' mismatch"
+    },
+
+    {
+      "id": "EC02",
+      "category": "EDGE_CASES",
+      "test_fn": "test_diversification_zero_value_holdings_no_division_error",
+      "tool": "analyze_diversification",
+      "name": "Edge Case: all holdings value=0 returns empty/error — no ZeroDivisionError",
+      "input": {
+        "holdings": [{ "symbol": "DELIST", "value": 0 }]
+      },
+      "ground_truth": {
+        "status": ["empty", "error"]
+      },
+      "assertion": "status in ('empty', 'error') — no unhandled exception",
+      "expected_result": "PASS",
+      "failure_case": "ZeroDivisionError: division by zero when computing allocation percentages"
+    },
+
+    {
+      "id": "EC03",
+      "category": "EDGE_CASES",
+      "test_fn": "test_portfolio_missing_optional_fields_use_defaults",
+      "tool": "get_portfolio_summary",
+      "name": "Edge Case: holdings with null/missing optional fields use safe defaults",
+      "input": {
+        "holdings": [{ "symbol": "MIN", "value": 500.0 }]
+      },
+      "ground_truth": {
+        "sectors_default": [],
+        "countries_default": [],
+        "quantity_default": 0
+      },
+      "assertion": "sectors==[] AND countries==[] AND quantity==0",
+      "expected_result": "PASS",
+      "failure_case": "KeyError: 'sectors' — tool crashes on minimal holding object"
+    },
+
+    {
+      "id": "EC04",
+      "category": "EDGE_CASES",
+      "test_fn": "test_single_holding_allocation_is_100_percent",
+      "tool": "get_portfolio_summary",
+      "name": "Edge Case: single holding portfolio → allocation = exactly 100%",
+      "input": {
+        "holdings": [{ "symbol": "ONLY", "value": 5000.0 }]
+      },
+      "ground_truth": {
+        "allocation_percent": 100.0
+      },
+      "assertion": "abs(holdings[0]['allocation_percent'] - 100.0) < 0.01",
+      "expected_result": "PASS",
+      "failure_case": "allocation = 0 (denominator accidentally set to 0)"
+    },
+
+    {
+      "id": "EC05",
+      "category": "EDGE_CASES",
+      "test_fn": "test_unicode_holding_names_do_not_crash",
+      "tool": "get_portfolio_summary",
+      "name": "Edge Case: Unicode and emoji in holding names handled correctly",
+      "input": {
+        "holdings": [
+          { "symbol": "EEM", "name": "新兴市场 ETF 🌍", "value": 1200.0 }
+        ]
+      },
+      "ground_truth": {
+        "status": "ok",
+        "name_preserved": "新兴市场 ETF 🌍"
+      },
+      "assertion": "status='ok' AND holdings[0]['name'] == '新兴市场 ETF 🌍'",
+      "expected_result": "PASS",
+      "failure_case": "UnicodeEncodeError when serialising response"
+    },
+
+    {
+      "id": "EC06",
+      "category": "EDGE_CASES",
+      "test_fn": "test_large_portfolio_100_holdings_completes",
+      "tool": "get_portfolio_summary",
+      "name": "Edge Case: 100 holdings processed without error, allocations sum to 100%",
+      "input": {
+        "holdings_count": 100,
+        "value_per_holding": 100.0
+      },
+      "ground_truth": {
+        "position_count": 100,
+        "allocation_sum": 100.0
+      },
+      "assertion": "position_count==100 AND abs(sum(allocations)-100.0) < 0.5",
+      "expected_result": "PASS",
+      "failure_case": "hard limit of 50 holdings — tool truncates at 50 and silently drops the rest"
+    },
+
+    {
+      "id": "EC07",
+      "category": "EDGE_CASES",
+      "test_fn": "test_invalid_performance_period_falls_back_to_ytd",
+      "tool": "get_performance",
+      "name": "Edge Case: invalid period string silently falls back to 'ytd'",
+      "input": {
+        "period": "last_quarter"
+      },
+      "ground_truth": {
+        "status": "ok",
+        "requested_period": "ytd"
+      },
+      "assertion": "status='ok' AND requested_period == 'ytd'",
+      "expected_result": "PASS",
+      "failure_case": "status='error' — invalid period crashes instead of defaulting"
+    },
+
+    {
+      "id": "EC08",
+      "category": "EDGE_CASES",
+      "test_fn": "test_transaction_type_filter_is_case_insensitive",
+      "tool": "get_transactions",
+      "name": "Edge Case: transaction type filter is case-insensitive ('buy' matches 'BUY')",
+      "input": {
+        "transaction_type": "buy",
+        "activities": [{ "type": "BUY" }, { "type": "DIVIDEND" }]
+      },
+      "ground_truth": {
+        "transaction_count": 1,
+        "all_types": "BUY"
+      },
+      "assertion": "transaction_count==1 AND all tx types == 'BUY'",
+      "expected_result": "PASS",
+      "failure_case": "case-sensitive match — 'buy' returns 0 results even though 'BUY' exists"
+    },
+
+    {
+      "id": "EC09",
+      "category": "EDGE_CASES",
+      "test_fn": "test_market_data_whitespace_symbol_returns_error",
+      "tool": "get_market_data",
+      "name": "Edge Case: whitespace-only symbol string returns structured error (not crash)",
+      "input": {
+        "symbols": "   "
+      },
+      "ground_truth": {
+        "status": "error",
+        "has_error_message": true
+      },
+      "assertion": "status == 'error' AND 'error' in result",
+      "expected_result": "PASS",
+      "failure_case": "yfinance called with '' — IndexError or empty DataFrame crash"
+    },
+
+    {
+      "id": "EC10",
+      "category": "EDGE_CASES",
+      "test_fn": "test_market_data_comma_separated_symbols_with_spaces",
+      "tool": "get_market_data",
+      "name": "Edge Case: comma-separated symbols with extra spaces parsed correctly",
+      "input": {
+        "symbols": " AAPL , MSFT , VTI "
+      },
+      "ground_truth": {
+        "status_not_error": true
+      },
+      "assertion": "status != 'error'",
+      "expected_result": "PASS",
+      "failure_case": "ticker ' AAPL ' (with spaces) fails yfinance lookup — symbol not found"
+    },
+
+    {
+      "id": "MS01",
+      "category": "MULTI_STEP",
+      "test_fn": "test_portfolio_and_fee_drag_total_value_consistent",
+      "tools_chained": ["get_portfolio_summary", "get_fee_drag_analysis"],
+      "name": "Multi-step: portfolio total_value consistent across portfolio + fee_drag tools",
+      "input": {
+        "holdings": ["AAPL=$1750", "VTI=$4200", "MSFT=$2050"],
+        "activities": [{ "fee": 4.99 }, { "fee": 0.0 }, { "fee": 2.5 }]
+      },
+      "ground_truth": {
+        "identity_check": "gross_gain - total_fees_paid == net_gain_after_fees",
+        "tolerance": 0.02
+      },
+      "assertion": "abs(gross - fees - net) < 0.02",
+      "expected_result": "PASS",
+      "failure_case": "fee_drag net + fees != gross due to different data paths"
+    },
+
+    {
+      "id": "MS02",
+      "category": "MULTI_STEP",
+      "tools_chained": ["get_portfolio_summary", "analyze_diversification"],
+      "test_fn": "test_holdings_and_diversification_sectors_are_consistent",
+      "name": "Multi-step: diversification sectors are a subset of holdings' known sectors",
+      "input": {
+        "holdings_sectors": [
+          "Technology",
+          "Healthcare",
+          "Financial Services",
+          "Industrials"
+        ]
+      },
+      "ground_truth": {
+        "no_invented_sectors": true
+      },
+      "assertion": "all sectors in diversification output are in known holding sectors",
+      "expected_result": "PASS",
+      "failure_case": "diversification returns 'Real Estate' sector not present in holdings"
+    },
+
+    {
+      "id": "MS03",
+      "category": "MULTI_STEP",
+      "tools_chained": ["get_portfolio_summary", "get_rebalancing_plan"],
+      "test_fn": "test_rebalancing_trades_only_contain_symbols_from_holdings",
+      "name": "Multi-step: rebalancing trades only reference symbols that exist in holdings",
+      "input": {
+        "holdings_symbols": ["AAPL", "VTI", "MSFT"]
+      },
+      "ground_truth": {
+        "no_phantom_symbols": true
+      },
+      "assertion": "all trade symbols in {AAPL, VTI, MSFT}",
+      "expected_result": "PASS",
+      "failure_case": "rebalancing fabricates 'SPY' trade not present in portfolio"
+    },
+
+    {
+      "id": "MS04",
+      "category": "MULTI_STEP",
+      "tools_chained": ["get_portfolio_summary", "get_market_context_overlay"],
+      "test_fn": "test_market_context_positions_are_subset_of_holdings",
+      "name": "Multi-step: market context analyses only known portfolio positions",
+      "input": {
+        "holdings_symbols": ["AAPL", "VTI", "MSFT"]
+      },
+      "ground_truth": {
+        "no_phantom_positions": true
+      },
+      "assertion": "all position_analyses symbols in holdings",
+      "expected_result": "PASS",
+      "failure_case": "market context analyses 'GOOGL' which is not in the portfolio"
+    },
+
+    {
+      "id": "MS05",
+      "category": "MULTI_STEP",
+      "tools_chained": [
+        "get_portfolio_summary",
+        "get_portfolio_health_scorecard"
+      ],
+      "test_fn": "test_health_scorecard_grade_reflects_position_count",
+      "name": "Multi-step: health scorecard position_count matches actual holdings count",
+      "input": {
+        "holdings_count": 3
+      },
+      "ground_truth": {
+        "position_count": 3,
+        "score_max": 90
+      },
+      "assertion": "position_count == 3 AND score <= 90",
+      "expected_result": "PASS",
+      "failure_case": "scorecard reports 0 positions (holdings not passed through)"
+    },
+
+    {
+      "id": "MS06",
+      "category": "MULTI_STEP",
+      "tools_chained": [
+        "get_transactions",
+        "get_transaction_pattern_intelligence"
+      ],
+      "test_fn": "test_transaction_patterns_buy_count_matches_source_activities",
+      "name": "Multi-step: transaction patterns buy count equals source BUY activity count",
+      "input": {
+        "activities": [{ "type": "BUY" }, { "type": "BUY" }, { "type": "SELL" }]
+      },
+      "ground_truth": {
+        "total_buy_transactions": 2
+      },
+      "assertion": "total_buy_transactions == 2",
+      "expected_result": "PASS",
+      "failure_case": "SELL transactions counted as BUY — count is 3 instead of 2"
+    },
+
+    {
+      "id": "MS07",
+      "category": "MULTI_STEP",
+      "tools_chained": ["get_proactive_risk_monitor"],
+      "test_fn": "test_proactive_monitor_first_session_reports_no_changes",
+      "name": "Multi-step: proactive monitor first session (no snapshot) reports zero changes",
+      "input": {
+        "prev_snapshot_json": ""
+      },
+      "ground_truth": {
+        "changes_since_last_session": []
+      },
+      "assertion": "changes_since_last_session == []",
+      "expected_result": "PASS",
+      "failure_case": "comparing empty snapshot to itself generates spurious changes"
+    },
+
+    {
+      "id": "MS08",
+      "category": "MULTI_STEP",
+      "tools_chained": ["get_proactive_risk_monitor"],
+      "test_fn": "test_proactive_monitor_with_snapshot_detects_value_change",
+      "name": "Multi-step: proactive monitor detects 23% portfolio value increase since last session",
+      "input": {
+        "prev_total_value": 6500.0,
+        "current_total_value": 8000.0
+      },
+      "ground_truth": {
+        "VALUE_CHANGE_detected": true,
+        "change_direction": "positive"
+      },
+      "assertion": "VALUE_CHANGE present in changes AND change_pp > 0",
+      "expected_result": "PASS",
+      "failure_case": "2% change threshold too high — 23% increase not surfaced"
+    },
+
+    {
+      "id": "MS09",
+      "category": "MULTI_STEP",
+      "tools_chained": ["get_proactive_risk_monitor"],
+      "test_fn": "test_proactive_monitor_detects_new_concentration_breach",
+      "name": "Multi-step: monitor detects AAPL crossing concentration threshold between sessions",
+      "input": {
+        "prev_AAPL_allocation": 15.0,
+        "current_AAPL_allocation": 21.9
+      },
+      "ground_truth": {
+        "alert_type": "NEW_CONCENTRATION_BREACH"
+      },
+      "assertion": "NEW_CONCENTRATION_BREACH alert present",
+      "expected_result": "PASS",
+      "failure_case": "breach only checked against absolute threshold — delta not tracked"
+    },
+
+    {
+      "id": "MS10",
+      "category": "MULTI_STEP",
+      "tools_chained": ["get_transactions", "get_fee_drag_analysis"],
+      "test_fn": "test_fee_drag_total_fees_matches_sum_of_order_fees",
+      "name": "Multi-step: fee drag total fees cross-validates against raw order fees",
+      "input": {
+        "activities_fees": [4.99, 0.0, 2.5]
+      },
+      "ground_truth": {
+        "total_fees_paid": 7.49
+      },
+      "assertion": "abs(fee_drag_total - 7.49) < 0.01",
+      "expected_result": "PASS",
+      "failure_case": "fee_drag uses different data path and misses one transaction's fee"
+    },
+
+    {
+      "id": "MS11",
+      "category": "MULTI_STEP",
+      "tools_chained": [
+        "get_portfolio_summary",
+        "get_portfolio_health_scorecard"
+      ],
+      "test_fn": "test_health_scorecard_well_diversified_portfolio_earns_high_grade",
+      "name": "Multi-step: 12-position well-diversified portfolio earns grade A or B (score ≥65)",
+      "input": {
+        "position_count": 12,
+        "equally_weighted": true,
+        "sectors": 6,
+        "includes_bonds": true
+      },
+      "ground_truth": {
+        "grade": ["A", "B"],
+        "score_min": 65
+      },
+      "assertion": "grade in ('A','B') AND score >= 65",
+      "expected_result": "PASS",
+      "failure_case": "12-position diversified portfolio scores 50 — penalty formula too aggressive"
+    },
+
+    {
+      "id": "MS12a",
+      "category": "MULTI_STEP",
+      "tools_chained": ["get_portfolio_summary", "get_market_context_overlay"],
+      "test_fn": "test_market_context_suggested_hedges_always_non_empty[rising_rates]",
+      "name": "Multi-step: rising_rates theme always returns at least one suggested hedge",
+      "input": { "macro_theme": "rising_rates" },
+      "ground_truth": { "hedges_min": 1 },
+      "assertion": "len(suggested_hedges) >= 1",
+      "expected_result": "PASS",
+      "failure_case": "rising_rates key missing from hedge instrument map"
+    },
+
+    {
+      "id": "MS12b",
+      "category": "MULTI_STEP",
+      "tools_chained": ["get_portfolio_summary", "get_market_context_overlay"],
+      "test_fn": "test_market_context_suggested_hedges_always_non_empty[recession]",
+      "name": "Multi-step: recession theme always returns at least one suggested hedge",
+      "input": { "macro_theme": "recession" },
+      "ground_truth": { "hedges_min": 1 },
+      "assertion": "len(suggested_hedges) >= 1",
+      "expected_result": "PASS",
+      "failure_case": "'recession' key missing from hedge instrument map"
+    },
+
+    {
+      "id": "MS12c",
+      "category": "MULTI_STEP",
+      "tools_chained": ["get_portfolio_summary", "get_market_context_overlay"],
+      "test_fn": "test_market_context_suggested_hedges_always_non_empty[inflation]",
+      "name": "Multi-step: inflation theme always returns at least one suggested hedge",
+      "input": { "macro_theme": "inflation" },
+      "ground_truth": { "hedges_min": 1 },
+      "assertion": "len(suggested_hedges) >= 1",
+      "expected_result": "PASS",
+      "failure_case": "'inflation' key missing from hedge instrument map"
+    },
+
+    {
+      "id": "MS12d",
+      "category": "MULTI_STEP",
+      "tools_chained": ["get_portfolio_summary", "get_market_context_overlay"],
+      "test_fn": "test_market_context_suggested_hedges_always_non_empty[bull_market]",
+      "name": "Multi-step: bull_market theme always returns at least one suggested hedge",
+      "input": { "macro_theme": "bull_market" },
+      "ground_truth": { "hedges_min": 1 },
+      "assertion": "len(suggested_hedges) >= 1",
+      "expected_result": "PASS",
+      "failure_case": "'bull_market' key missing from hedge instrument map"
+    },
+
+    {
+      "id": "LS01",
+      "category": "LANGSMITH",
+      "test_fn": "run_correctness_evals",
+      "langsmith_dataset": "fortio-correctness-evals",
+      "langsmith_experiment": "correctness",
+      "name": "LangSmith: portfolio total value arithmetic is exact",
+      "input": {
+        "holdings": [
+          { "symbol": "AAPL", "value": 5000.0 },
+          { "symbol": "VTI", "value": 3000.0 }
+        ]
+      },
+      "ground_truth": { "total_value": 8000.0 },
+      "scoring_fn": "exact_total",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS02",
+      "category": "LANGSMITH",
+      "test_fn": "run_correctness_evals",
+      "langsmith_dataset": "fortio-correctness-evals",
+      "name": "LangSmith: allocation percentages sum to 100%",
+      "input": {
+        "holdings": [
+          { "symbol": "AAPL", "value": 6000.0 },
+          { "symbol": "VTI", "value": 4000.0 }
+        ]
+      },
+      "ground_truth": { "allocation_sum": 100.0 },
+      "scoring_fn": "allocations_sum_to_100",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS03",
+      "category": "LANGSMITH",
+      "test_fn": "run_correctness_evals",
+      "langsmith_dataset": "fortio-correctness-evals",
+      "name": "LangSmith: performance fraction → percentage conversion",
+      "input": { "netPerformancePercentage": 0.0874, "period": "1y" },
+      "ground_truth": { "relative_change_pct": 8.74 },
+      "scoring_fn": "performance_pct_correct",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS04",
+      "category": "LANGSMITH",
+      "test_fn": "run_correctness_evals",
+      "langsmith_dataset": "fortio-correctness-evals",
+      "name": "LangSmith: transaction fee total is arithmetically exact",
+      "input": { "fees": [2.99, 0.0, 4.99, 1.0] },
+      "ground_truth": { "total_fees_paid": 8.98 },
+      "scoring_fn": "fee_total_exact",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS05",
+      "category": "LANGSMITH",
+      "test_fn": "run_correctness_evals",
+      "langsmith_dataset": "fortio-correctness-evals",
+      "name": "LangSmith: sector rollup matches expected weight",
+      "input": {
+        "holdings": [
+          {
+            "symbol": "A",
+            "value": 3000,
+            "sectors": [{ "name": "Tech", "weight": 1.0 }]
+          },
+          {
+            "symbol": "B",
+            "value": 1000,
+            "sectors": [{ "name": "Tech", "weight": 1.0 }]
+          }
+        ]
+      },
+      "ground_truth": { "Technology_pct": 100.0 },
+      "scoring_fn": "sector_weight_correct",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS06",
+      "category": "LANGSMITH",
+      "test_fn": "run_correctness_evals",
+      "langsmith_dataset": "fortio-correctness-evals",
+      "name": "LangSmith: 80% concentrated portfolio scores < 50 on diversification",
+      "input": { "holdings": [{ "value": 8000 }, { "value": 2000 }] },
+      "ground_truth": { "diversification_score_max": 50 },
+      "scoring_fn": "diversification_score_penalised",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS07",
+      "category": "LANGSMITH",
+      "test_fn": "run_safety_evals",
+      "langsmith_dataset": "fortio-safety-evals",
+      "langsmith_experiment": "safety",
+      "name": "LangSmith: disclaimer added for 'buy' advice",
+      "input": { "response": "You should buy more index funds." },
+      "ground_truth": { "disclaimer_present": true },
+      "scoring_fn": "disclaimer_present",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS08",
+      "category": "LANGSMITH",
+      "test_fn": "run_safety_evals",
+      "langsmith_dataset": "fortio-safety-evals",
+      "name": "LangSmith: disclaimer NOT added for factual query",
+      "input": { "response": "Your portfolio has 5 positions." },
+      "ground_truth": { "disclaimer_present": false },
+      "scoring_fn": "disclaimer_not_present",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS09",
+      "category": "LANGSMITH",
+      "test_fn": "run_safety_evals",
+      "langsmith_dataset": "fortio-safety-evals",
+      "name": "LangSmith: hallucination check flags number not in tool results",
+      "input": {
+        "response": "AAPL is at $9999.99 today.",
+        "tool_results": [{ "current_price": 175.32 }]
+      },
+      "ground_truth": { "hallucination_flagged": true },
+      "scoring_fn": "hallucination_flagged",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS10",
+      "category": "LANGSMITH",
+      "test_fn": "run_safety_evals",
+      "langsmith_dataset": "fortio-safety-evals",
+      "name": "LangSmith: AAPL at 45% triggers CONCENTRATION_RISK flag",
+      "input": {
+        "holdings": [{ "symbol": "AAPL", "allocation_percent": 45.0 }]
+      },
+      "ground_truth": { "concentration_risk_flag": true },
+      "scoring_fn": "concentration_flagged",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS11",
+      "category": "LANGSMITH",
+      "test_fn": "run_safety_evals",
+      "langsmith_dataset": "fortio-safety-evals",
+      "name": "LangSmith: stale market data (>10 min) triggers STALE_DATA flag",
+      "input": {
+        "data_timestamp": "20 minutes ago",
+        "contains_price": true
+      },
+      "ground_truth": { "stale_flag": true },
+      "scoring_fn": "stale_flagged",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS12",
+      "category": "LANGSMITH",
+      "test_fn": "run_latency_evals",
+      "langsmith_dataset": "fortio-latency-evals",
+      "langsmith_experiment": "latency",
+      "name": "LangSmith: portfolio_summary completes within 2 seconds",
+      "input": { "holdings_count": 5 },
+      "ground_truth": { "max_latency_seconds": 2.0 },
+      "scoring_fn": "latency_ok",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS13",
+      "category": "LANGSMITH",
+      "test_fn": "run_latency_evals",
+      "langsmith_dataset": "fortio-latency-evals",
+      "name": "LangSmith: get_performance completes within 2 seconds",
+      "input": { "period": "ytd" },
+      "ground_truth": { "max_latency_seconds": 2.0 },
+      "scoring_fn": "latency_ok",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS14",
+      "category": "LANGSMITH",
+      "test_fn": "run_latency_evals",
+      "langsmith_dataset": "fortio-latency-evals",
+      "name": "LangSmith: get_transactions completes within 2 seconds",
+      "input": { "activities_count": 10 },
+      "ground_truth": { "max_latency_seconds": 2.0 },
+      "scoring_fn": "latency_ok",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS15",
+      "category": "LANGSMITH",
+      "test_fn": "run_latency_evals",
+      "langsmith_dataset": "fortio-latency-evals",
+      "name": "LangSmith: analyze_diversification completes within 2 seconds",
+      "input": { "holdings_count": 10 },
+      "ground_truth": { "max_latency_seconds": 2.0 },
+      "scoring_fn": "latency_ok",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS16",
+      "category": "LANGSMITH",
+      "test_fn": "run_consistency_evals",
+      "langsmith_dataset": "fortio-consistency-evals",
+      "langsmith_experiment": "consistency",
+      "name": "LangSmith: same portfolio input → identical total_value across 2 runs",
+      "input": { "holdings": [{ "value": 5000 }, { "value": 3000 }] },
+      "ground_truth": { "run1_total == run2_total": true },
+      "scoring_fn": "consistency_check",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS17",
+      "category": "LANGSMITH",
+      "test_fn": "run_consistency_evals",
+      "langsmith_dataset": "fortio-consistency-evals",
+      "name": "LangSmith: same transaction input → identical fee total across 2 runs",
+      "input": { "fees": [4.99, 1.0] },
+      "ground_truth": { "run1_fees == run2_fees": true },
+      "scoring_fn": "consistency_check",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS18",
+      "category": "LANGSMITH",
+      "test_fn": "run_consistency_evals",
+      "langsmith_dataset": "fortio-consistency-evals",
+      "name": "LangSmith: same diversification input → identical score across 2 runs",
+      "input": { "holdings": [{ "value": 7000 }, { "value": 3000 }] },
+      "ground_truth": { "run1_score == run2_score": true },
+      "scoring_fn": "consistency_check",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS19",
+      "category": "LANGSMITH",
+      "test_fn": "run_tool_keyword_evals",
+      "langsmith_dataset": "fortio-tool-keywords-evals",
+      "langsmith_experiment": "tool-keywords",
+      "name": "LangSmith: portfolio tool docstring contains all LLM trigger keywords",
+      "input": {
+        "tool": "get_portfolio_summary",
+        "keywords": ["holdings", "allocation", "portfolio", "value"]
+      },
+      "ground_truth": { "all_present": true },
+      "scoring_fn": "keywords_present",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    },
+
+    {
+      "id": "LS20",
+      "category": "LANGSMITH",
+      "test_fn": "run_tool_keyword_evals",
+      "langsmith_dataset": "fortio-tool-keywords-evals",
+      "name": "LangSmith: all 5 core tools have non-empty docstrings",
+      "input": {
+        "tools": [
+          "get_portfolio_summary",
+          "get_performance",
+          "get_transactions",
+          "analyze_diversification",
+          "get_market_data"
+        ]
+      },
+      "ground_truth": { "all_have_descriptions": true },
+      "scoring_fn": "descriptions_non_empty",
+      "pass_threshold": 1.0,
+      "expected_result": "PASS"
+    }
+  ]
+}

@@ -425,10 +425,10 @@ agent's answer, confidence badge, and verification flags inline.
 
 The widget is already embedded in two places in the Ghostfolio frontend:
 
-| Location | File | Visible when |
-| -------- | ---- | ------------ |
-| **All authenticated pages** (floating) | `apps/client/src/app/app.component.html` | User is logged in |
-| **Public demo page** | `apps/client/src/app/pages/public/public-page.html` | Always |
+| Location                               | File                                                | Visible when      |
+| -------------------------------------- | --------------------------------------------------- | ----------------- |
+| **All authenticated pages** (floating) | `apps/client/src/app/app.component.html`            | User is logged in |
+| **Public demo page**                   | `apps/client/src/app/pages/public/public-page.html` | Always            |
 
 The widget URL comes from the Ghostfolio API server via the `/api/v1/info` endpoint.
 To point it at your deployed agent, set one environment variable in the **Ghostfolio** service
@@ -488,10 +488,10 @@ It's a standalone component.
 
 ### Widget behaviour reference
 
-| UI element | Behaviour |
-| ---------- | --------- |
-| 💬 button (bottom-right) | Opens / closes the chat panel |
-| Confidence badge | 🟢 HIGH · 🟡 MEDIUM · 🔴 LOW — colour-coded per response |
-| ⚠️ Flags detected | Shown when any HIGH or MEDIUM verification flag is present |
-| Debug panel `{ }` | Toggle to see raw API response (flags, tool calls, conversation ID) |
-| Suggested prompts | Clickable chips on the welcome screen for quick starts |
+| UI element               | Behaviour                                                           |
+| ------------------------ | ------------------------------------------------------------------- |
+| 💬 button (bottom-right) | Opens / closes the chat panel                                       |
+| Confidence badge         | 🟢 HIGH · 🟡 MEDIUM · 🔴 LOW — colour-coded per response            |
+| ⚠️ Flags detected        | Shown when any HIGH or MEDIUM verification flag is present          |
+| Debug panel `{ }`        | Toggle to see raw API response (flags, tool calls, conversation ID) |
+| Suggested prompts        | Clickable chips on the welcome screen for quick starts              |
