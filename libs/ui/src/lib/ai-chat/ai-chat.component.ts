@@ -131,7 +131,7 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
 
   private readonly unsubscribeSubject = new Subject<void>();
   private readonly HISTORY_KEY = 'fortio-chat-history';
-  private readonly MAX_HISTORY = 10;
+  public readonly MAX_HISTORY = 50;
 
   // ── Prompt Tips Data ─────────────────────────────────────────────────────
   public readonly promptCategories: PromptCategory[] = [
@@ -586,11 +586,16 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
     this.historySnapshots = updated;
   }
 
-  /** Read conversation snapshots from localStorage */
+  /** Read conversation snapshots from localStorage, always newest-first */
   private loadHistory(): ConversationSnapshot[] {
     try {
       const raw = localStorage.getItem(this.HISTORY_KEY);
-      return raw ? (JSON.parse(raw) as ConversationSnapshot[]) : [];
+      const snapshots = raw ? (JSON.parse(raw) as ConversationSnapshot[]) : [];
+      // Sort descending by savedAt so the list is newest-first even if
+      // localStorage data was written out of order by an older version.
+      return snapshots.sort(
+        (a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()
+      );
     } catch {
       return [];
     }

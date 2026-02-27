@@ -1,270 +1,497 @@
-# AgentForge — Complete Setup & Run Guide
+# Fortio Agent — Setup & Run Guide
 
-## Answers to All Your Questions
-
----
-
-### Q1: Where is .env.example in the zip?
-
-```
-agentforge_scaffold.zip
-└── .env.example          ← ROOT of the zip, same level as README.md
-```
-
-Unzip → you'll see `.env.example` immediately. Copy it:
-
-```bash
-cp .env.example .env
-```
+Complete guide to running Fortio locally, connecting it to Ghostfolio, using the CLI,
+setting up MCP for Claude Desktop / Cursor, and running the eval suite.
 
 ---
 
-**The .cursor/rules/agentforge.mdc file I generated is auto-loaded by Cursor.**
-Every time you ask Claude to write code, it already knows:
+## Prerequisites
 
-- Use LangGraph, not AgentExecutor
-- Return error dicts, never raise
-- Always include data_timestamp
-- Use httpx, not requests
-
----
-
-### Q3: CLI vs FastAPI — when to use which
-
-**SHORT ANSWER: Use both, for different audiences.**
-
-|                   | Fortio CLI                            | FastAPI                                  |
-| ----------------- | ------------------------------------- | ---------------------------------------- |
-| **What it is**    | Terminal REPL / single-shot queries   | REST API running on port 8001            |
-| **Who uses it**   | YOU during development                | Ghostfolio's Angular frontend            |
-| **When to use**   | Quick exploration, scripting          | Embedding the agent in the Ghostfolio UI |
-| **What it shows** | Rich terminal output with tool traces | JSON responses, Swagger docs at /docs    |
-| **Auth**          | None (local)                          | Bearer token                             |
-| **In production** | Not deployed                          | Primary interface                        |
+| Tool           | Version   | Install                                    |
+| -------------- | --------- | ------------------------------------------ |
+| Python         | 3.12+     | python.org or `brew install python@3.12`   |
+| Docker Desktop | latest    | docker.com/products/docker-desktop         |
+| Git            | any       | git-scm.com                                |
+| Node.js        | 20+ (LTS) | nodejs.org (required for Ghostfolio build) |
 
 ---
 
-### Q4: Ghostfolio deployment — one platform, not two
-
-**WHY we suggested Railway then Render:** Different tools for different stages.
-That adds unnecessary complexity. Here is the SINGLE PLATFORM approach:
-
-#### Option A: Railway only (RECOMMENDED — simplest)
-
-```
-Tuesday MVP:   Deploy agent only → point at ghostfol.io demo API (free)
-Friday:        Add Ghostfolio as a second Railway service in same project
-Both in one:   Railway project = Ghostfolio service + Agent service + Postgres + Redis
-```
-
-**Railway cost: ~$15-20/month total for 4 services**
-
-#### Option B: Local Docker only (for the submission demo)
-
-```
-Run everything locally with docker compose up
-Record a demo video of the working agent
-Submit the video + GitHub repo link
-No cloud deployment cost
-```
-
-**This is actually the safest option for the 24h deadline.**
-
-#### Challenges if you use TWO platforms (Railway → Render):
-
-- Two different CI/CD pipelines to configure
-- Internal networking doesn't work across platforms (must use public URLs)
-- Cross-platform latency adds 50-200ms per request
-- Two sets of environment variables to keep in sync
-- Different healthcheck and rollback mechanisms
-- Double the debugging surface when things break
-
-**RECOMMENDATION: Use Railway for everything OR local Docker for the demo.**
-Don't split across platforms.
-
----
-
-### Q5: Which skills.md files do you need?
-
-I've generated a project-specific `SKILLS.md` at `.cursor/rules/SKILLS.md`.
-Here's why you need it and what's in it:
-
-| Skill in SKILLS.md                    | Why You Need It                                      |
-| ------------------------------------- | ---------------------------------------------------- |
-| Creating a new tool                   | So Cursor generates correct async pattern every time |
-| Adding a Ghostfolio API client method | Prevents missing `@retry` decorator                  |
-| Writing TDD tests                     | Correct `@respx.mock` pattern for httpx mocking      |
-| Adding a verification check           | Correct signature + registration in pipeline         |
-| LangGraph node pattern                | Prevents returning full state instead of diff        |
-| Common mistakes table                 | Claude in Cursor avoids the 8 most common errors     |
-| Ghostfolio endpoint reference         | Cursor can autocomplete correct endpoint paths       |
-
-**How to use it:**
-
-```
-@SKILLS.md  Create a new tool that calls GET /api/v1/portfolio/investments
-```
-
-Cursor reads the skills file and generates code that follows all patterns exactly.
-
----
-
-## Running the App Locally (Step by Step)
-
-### Prerequisites
-
-- Docker Desktop installed and running
-- Python 3.11+
-- Git
-
-### Step 1: Clone and structure
+## Step 1 — Clone the repo
 
 ```bash
 git clone https://github.com/meghamegs-lab/agentForge.git
 cd agentForge
 ```
 
-### Step 2: Copy environment file
+---
+
+## Step 2 — Configure environment variables
 
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and fill in:
+Open `.env` and fill in the following:
 
-- `ANTHROPIC_API_KEY` — from console.anthropic.com
-- `LANGCHAIN_API_KEY` — from smith.langchain.com (optional but recommended)
-- Leave `GHOSTFOLIO_ACCESS_TOKEN` empty for now (step 5 below)
+```bash
+# ── Required ────────────────────────────────────────────────────────────────
+ANTHROPIC_API_KEY=sk-ant-...           # console.anthropic.com → API Keys
 
-### Step 3: Start Ghostfolio + databases
+# ── Ghostfolio connection ────────────────────────────────────────────────────
+# For local Docker setup (see Step 3)
+GHOSTFOLIO_BASE_URL=http://localhost:3333
+GHOSTFOLIO_ACCESS_TOKEN=               # leave empty until Step 4
+
+# ── Optional — for LangSmith tracing ────────────────────────────────────────
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=ls__...              # smith.langchain.com → Settings
+LANGCHAIN_PROJECT=fortio-agent
+
+# ── Optional — OpenAI fallback ──────────────────────────────────────────────
+OPENAI_API_KEY=sk-...
+```
+
+---
+
+## Step 3 — Start Ghostfolio + databases (Docker)
 
 ```bash
 docker compose -f docker/docker-compose.yml up postgres redis ghostfolio -d
 ```
 
-Wait ~60 seconds for Ghostfolio to start. Check it's up:
+Wait ~60 seconds for Ghostfolio to initialise. Verify it's up:
 
 ```bash
 curl http://localhost:3333/api/v1/health
-# Should return: {"status":"ok"}
+# Expected: {"status":"ok"}
 ```
 
-### Step 4: Create your Ghostfolio account
+Ghostfolio UI → http://localhost:3333
 
-1. Open http://localhost:3333
-2. Click "Get Started" → create account
-3. Settings → Security token → copy the token
-4. Add the token to `.env`:
+---
+
+## Step 4 — Create your Ghostfolio account and get an access token
+
+1. Open http://localhost:3333 in your browser
+2. Click **Get Started** → create an account
+3. Navigate to **Settings** → **Security token** → copy the token
+4. Add it to `.env`:
    ```
-   GHOSTFOLIO_ACCESS_TOKEN=your-token-here
+   GHOSTFOLIO_ACCESS_TOKEN=your-security-token-here
    ```
 
-### Step 5: Get a bearer token (for API calls)
+The `GhostfolioClient` uses this token to fetch bearer tokens automatically —
+you do **not** need to handle token refresh manually.
 
-```bash
-curl -X POST http://localhost:3333/api/v1/auth/anonymous \
-  -H "Content-Type: application/json" \
-  -d '{"accessToken": "YOUR_SECURITY_TOKEN"}'
-# Copy the "authToken" from response — this is your bearer token
-# NOT needed in .env — the GhostfolioClient fetches it automatically
-```
+> **Using the demo instance instead?**  
+> Get your access token from [ghostfol.io/en/demo](https://ghostfol.io/en/demo)  
+> and set `GHOSTFOLIO_BASE_URL=https://ghostfol.io`
 
-### Step 6: Add some holdings in Ghostfolio
+---
 
-Go to http://localhost:3333 → Portfolio → + Add transaction
-Add at least 3-4 holdings so the agent has data to work with.
+## Step 5 — Add holdings in Ghostfolio
 
-### Step 7: Set up Python agent
+Go to http://localhost:3333 → **Portfolio** → **+ Add transaction**
+
+Add at least 3–4 holdings so the agent has real data to analyse. The agent works best
+with holdings from multiple asset classes (equity, bonds, ETFs).
+
+---
+
+## Step 6 — Set up the Python agent
 
 ```bash
 cd apps/agent
 python -m venv .venv
 source .venv/bin/activate      # Windows: .venv\Scripts\activate
+
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
+
+# Install as editable to enable the `fortio` CLI command
+pip install -e .
 ```
 
-### Step 8: Run tests (TDD — do this before running the app)
+Verify the install:
 
 ```bash
-pytest tests/unit/verification/ -v        # pure Python, no network needed
-pytest tests/unit/tools/ -v               # uses respx mocks, no network
+fortio version
 ```
 
-All should pass. If any fail, fix before proceeding.
+---
 
-### Step 9: Run the agent
+## Step 7 — Run the test suite
+
+Always run tests before starting the agent to confirm the environment is correct.
+
+### Unit tests (fast, mocked, no network needed)
 
 ```bash
-# Terminal 1: FastAPI (REST API)
-uvicorn agent.api.main:app --reload --port 8001
+# All unit tests
+pytest tests/unit/ -v
 
-# Terminal 2: CLI chat (interactive REPL)
+# Specific sub-suites
+pytest tests/unit/tools/ -v            # 11 tool tests
+pytest tests/unit/verification/ -v    # 5-stage verification pipeline
+pytest tests/unit/clients/ -v         # Ghostfolio + market data clients
+pytest tests/unit/graph/ -v           # LangGraph routing
+pytest tests/unit/api/ -v             # FastAPI schemas
+```
+
+### Eval suite (correctness, tool selection, edge cases, multi-step)
+
+```bash
+pytest tests/eval/ -v
+```
+
+All eval tests are mocked with `respx` — no real API calls, no LLM costs.
+
+| File                     | What it tests                                         | Tests |
+| ------------------------ | ----------------------------------------------------- | ----- |
+| `test_correctness.py`    | Arithmetic accuracy, percentage conversions, fee sums | 12    |
+| `test_tool_selection.py` | Docstring trigger keywords, domain boundary           | 10    |
+| `test_tool_execution.py` | Advanced tool happy path + error cases                | 16    |
+| `test_multi_step.py`     | Cross-tool consistency, referential integrity         | 12    |
+| `test_edge_cases.py`     | Malformed data, unicode, large portfolios             | 10    |
+
+### Adversarial tests
+
+```bash
+pytest tests/adversarial/ -v           # safety / jailbreak / off-topic
+```
+
+### Coverage report
+
+```bash
+pytest tests/unit/ tests/eval/ --cov=agent --cov-report=term-missing
+```
+
+---
+
+## Step 8 — Start the agent
+
+### Option A: CLI (development — no server needed)
+
+```bash
+# Single question
+fortio ask "What does my portfolio look like?"
+
+# Interactive multi-turn REPL
 fortio chat
 ```
 
-### Step 10: Open and test
+Inside `fortio chat`:
 
-- **FastAPI docs:** http://localhost:8001/docs
-- **Ghostfolio UI:** http://localhost:3333
-- **LangSmith traces:** smith.langchain.com → your project
+- Type your question and press Enter
+- `/help` — show topic suggestions
+- `/tools` — list all 11 agent tools
+- `/clear` — visual separator
+- `exit` or `q` — end the session
 
-### Step 11: Run full Docker stack (optional — mirrors production)
+### Option B: FastAPI server
 
 ```bash
-# From repo root
+# Start the API server (port 8001)
+fortio serve
+
+# Development mode with hot-reload
+fortio serve --reload
+```
+
+- **Swagger docs:** http://localhost:8001/docs
+- **Health check:** http://localhost:8001/health
+
+### Option C: Full Docker stack (mirrors production)
+
+```bash
+# From the monorepo root — builds and starts all services
 docker compose -f docker/docker-compose.yml up -d --build
 
-# Check all services are up
-docker compose -f docker/docker-compose.yml ps
+docker compose -f docker/docker-compose.yml ps   # check status
+docker compose -f docker/docker-compose.yml logs agent -f  # follow logs
 ```
+
+---
+
+## Step 9 — MCP Server (Claude Desktop / Cursor)
+
+Fortio exposes all 11 tools as an MCP server so Claude Desktop and Cursor can query
+your portfolio directly in their chat interfaces.
+
+### What the MCP server provides
+
+| Type          | Count | Details                                                                |
+| ------------- | ----- | ---------------------------------------------------------------------- |
+| **Tools**     | 11    | All portfolio, performance, diversification, market, and risk tools    |
+| **Resources** | 3     | `portfolio://summary`, `portfolio://performance`, `portfolio://health` |
+| **Prompts**   | 1     | `portfolio-analysis` with live pre-loaded portfolio context            |
+
+### Start the MCP server (standalone)
+
+```bash
+fortio mcp
+# Output goes to stderr; stdout is reserved for the MCP JSON-RPC wire
+```
+
+### Claude Desktop setup
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json`
+(Windows: `%APPDATA%\Claude\claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "fortio": {
+      "command": "fortio",
+      "args": ["mcp"],
+      "env": {
+        "GHOSTFOLIO_BASE_URL": "http://localhost:3333",
+        "GHOSTFOLIO_ACCESS_TOKEN": "your-security-token"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop. Fortio tools appear in the tool list automatically.
+
+> **Using Railway?** Replace `http://localhost:3333` with your Railway Ghostfolio URL.
+
+### Cursor setup
+
+1. Open Cursor → **Settings** → **MCP**
+2. Click **Add server**
+3. Paste the same JSON block
+
+### Using the `portfolio-analysis` prompt
+
+In Claude Desktop, open the **Prompt Library** → select **portfolio-analysis**.
+Choose a focus area:
+
+| Focus         | What Claude analyses                                   |
+| ------------- | ------------------------------------------------------ |
+| `risk`        | Concentration risk, sector exposure, rebalancing needs |
+| `performance` | Returns, period comparisons, best/worst performers     |
+| `fees`        | Fee drag, total fees paid, cost reduction              |
+| `all`         | Comprehensive analysis (default)                       |
+
+Live portfolio data is embedded automatically — no tool calls needed.
+
+---
+
+## Step 10 — LangSmith Experiments
+
+Run the scored LangSmith eval suite to benchmark correctness, safety, and latency:
+
+```bash
+# Requires LANGCHAIN_API_KEY in .env
+python tests/eval/ls_evals.py
+
+# Single eval type
+python tests/eval/ls_evals.py --only correctness
+python tests/eval/ls_evals.py --only safety
+python tests/eval/ls_evals.py --only latency
+python tests/eval/ls_evals.py --only consistency
+python tests/eval/ls_evals.py --only tool-keywords
+
+# Tag by branch for comparison
+python tests/eval/ls_evals.py --prefix feat/my-branch
+```
+
+View results at: https://smith.langchain.com → Projects → **fortio-evals**
 
 ---
 
 ## Quick Reference: What Runs Where
 
-| Service        | Local URL                    | Port  | How to Start            |
-| -------------- | ---------------------------- | ----- | ----------------------- |
-| Ghostfolio UI  | http://localhost:3333        | 3333  | Docker Compose          |
-| Ghostfolio API | http://localhost:3333/api/v1 | 3333  | Docker Compose          |
-| Agent FastAPI  | http://localhost:8001/docs   | 8001  | `uvicorn ...` or Docker |
-| PostgreSQL     | localhost:5432               | 5432  | Docker Compose          |
-| Redis          | localhost:6379               | 6379  | Docker Compose          |
-| LangSmith      | smith.langchain.com          | cloud | env var only            |
+| Service       | Local URL                  | Port  | How to Start                   |
+| ------------- | -------------------------- | ----- | ------------------------------ |
+| Ghostfolio UI | http://localhost:3333      | 3333  | `docker compose up ghostfolio` |
+| Agent FastAPI | http://localhost:8001/docs | 8001  | `fortio serve` or Docker       |
+| Agent CLI     | terminal                   | n/a   | `fortio chat`                  |
+| MCP server    | stdio (no port)            | n/a   | `fortio mcp`                   |
+| PostgreSQL    | localhost:5432             | 5432  | `docker compose up postgres`   |
+| Redis         | localhost:6379             | 6379  | `docker compose up redis`      |
+| LangSmith     | smith.langchain.com        | cloud | env var only                   |
+
+---
+
+## CLI vs Interfaces Cheat Sheet
+
+| Interface                    | Best for                            | History persistence |
+| ---------------------------- | ----------------------------------- | ------------------- |
+| `fortio ask`                 | Quick one-off queries, scripting    | None (stateless)    |
+| `fortio chat`                | Interactive exploration in terminal | In-memory only      |
+| `fortio serve` + `/api/chat` | Angular/Ghostfolio frontend         | Postgres (full)     |
+| `fortio mcp`                 | Claude Desktop / Cursor integration | Host-managed        |
 
 ---
 
 ## Troubleshooting
 
-**Ghostfolio won't start:**
+### Ghostfolio won't start
 
 ```bash
-docker compose logs ghostfolio   # check for DB connection errors
-# Usually means postgres isn't ready yet — wait 30s and retry
+docker compose -f docker/docker-compose.yml logs ghostfolio
+# Usually: postgres isn't ready yet — wait 30 s and retry
+docker compose -f docker/docker-compose.yml restart ghostfolio
 ```
 
-**Agent can't reach Ghostfolio:**
+### Agent can't reach Ghostfolio (connection refused)
 
 ```bash
-# Check GHOSTFOLIO_BASE_URL in .env
-# Local: http://localhost:3333
-# Docker internal: http://ghostfolio:3333
+# Check GHOSTFOLIO_BASE_URL in .env:
+# Local:           http://localhost:3333
+# Docker internal: http://ghostfolio:3333  (used by agent container)
+# Railway:         https://your-app.up.railway.app
 ```
 
-**Bearer token expired (401 errors):**
+### Bearer token expired (401 errors)
+
+`GhostfolioClient` auto-refreshes bearer tokens. If you're testing manually:
 
 ```bash
-# GhostfolioClient auto-refreshes — but if manual testing:
 curl -X POST http://localhost:3333/api/v1/auth/anonymous \
   -H "Content-Type: application/json" \
   -d '{"accessToken": "YOUR_SECURITY_TOKEN"}'
 ```
 
-**LangSmith not showing traces:**
+### LangSmith not showing traces
 
 ```bash
-# Check .env:
+# Check .env — all three must be set:
 LANGCHAIN_TRACING_V2=true       # must be string "true"
 LANGCHAIN_API_KEY=ls__...       # must start with ls__
-LANGCHAIN_PROJECT=ghostfolio-agent
+LANGCHAIN_PROJECT=fortio-agent
 ```
+
+### MCP server not connecting in Claude Desktop
+
+1. Confirm `fortio` is on `PATH`: `which fortio`
+2. If not found, use the full path in the config:
+   ```json
+   "command": "/Users/you/.venv/bin/fortio"
+   ```
+3. Check Claude Desktop logs for JSON-RPC errors
+4. Verify `GHOSTFOLIO_ACCESS_TOKEN` is set in the MCP env block
+
+### `fortio mcp` shows no output
+
+That's correct — all human-readable output goes to stderr; stdout is the MCP wire protocol.
+Run with stderr visible: `fortio mcp 2>&1 | head -20`
+
+### Tests failing with import errors
+
+```bash
+# Ensure you're in the right directory with venv active
+cd apps/agent
+source .venv/bin/activate
+pip install -e .
+PYTHONPATH=. pytest tests/unit/ -v
+```
+
+---
+
+## CI/CD
+
+GitHub Actions runs on every PR and push to `main`:
+
+| Job            | Trigger                             | What it does                                 |
+| -------------- | ----------------------------------- | -------------------------------------------- |
+| `test-agent`   | Any change to `apps/agent/**`       | Unit tests (hard gate) + evals (advisory)    |
+| `deploy-agent` | Push to `main`, agent files changed | Deploy to Railway (requires `RAILWAY_TOKEN`) |
+
+Evals in CI use dummy API keys — they run on mocked data and never call real LLMs.
+
+---
+
+## Adding the AI Chat Widget to Ghostfolio
+
+The Fortio AI chat widget (`GfAiChatComponent`) is a floating chat button (bottom-right corner)
+that opens a full chat panel and connects to the Fortio FastAPI agent.
+
+### How it works
+
+The widget is an Angular standalone component in `libs/ui/src/lib/ai-chat/`. It takes one input:
+
+```html
+<gf-ai-chat [fortioApiUrl]="'https://your-fortio-agent.railway.app'" />
+```
+
+At runtime it calls `POST {fortioApiUrl}/api/chat` with the user's message and renders the
+agent's answer, confidence badge, and verification flags inline.
+
+### It's already integrated — just set one env var
+
+The widget is already embedded in two places in the Ghostfolio frontend:
+
+| Location                               | File                                                | Visible when      |
+| -------------------------------------- | --------------------------------------------------- | ----------------- |
+| **All authenticated pages** (floating) | `apps/client/src/app/app.component.html`            | User is logged in |
+| **Public demo page**                   | `apps/client/src/app/pages/public/public-page.html` | Always            |
+
+The widget URL comes from the Ghostfolio API server via the `/api/v1/info` endpoint.
+To point it at your deployed agent, set one environment variable in the **Ghostfolio** service
+(`.env` or Railway env vars):
+
+```bash
+FORTIO_API_URL=https://fortio-agent-production.up.railway.app
+```
+
+The data flow:
+
+```
+FORTIO_API_URL (env var)
+  → apps/api/src/services/configuration/configuration.service.ts  (reads env)
+  → apps/api/src/app/info/info.service.ts  (sets info.fortioApiUrl)
+  → GET /api/v1/info  (served to Angular frontend)
+  → app.component.html  (passes to widget as [fortioApiUrl])
+  → GfAiChatComponent  (calls POST {fortioApiUrl}/api/chat)
+```
+
+### Adding the widget to a new Ghostfolio page
+
+If you want to embed the widget on a page that does not already have it:
+
+**Step 1 — Import the component** in the page's `@Component` decorator:
+
+```typescript
+// apps/client/src/app/pages/my-page/my-page.component.ts
+import { GfAiChatComponent } from '@ghostfolio/ui/ai-chat';
+
+@Component({
+  imports: [
+    GfAiChatComponent,
+    // ... other existing imports
+  ],
+  // ...
+})
+export class MyPageComponent {
+  public info: InfoItem;  // already available on most pages via DataService
+}
+```
+
+**Step 2 — Add the tag to the template**:
+
+```html
+<!-- apps/client/src/app/pages/my-page/my-page.component.html -->
+
+<!-- Place at the very bottom, outside any scroll containers -->
+<gf-ai-chat [fortioApiUrl]="info?.fortioApiUrl || 'http://localhost:8001'" />
+```
+
+The widget uses `position: fixed` so it floats over all page content regardless of where
+the tag is placed in the DOM.
+
+**That's it** — no routing changes, no service injection, no NgModule registration needed.
+It's a standalone component.
+
+### Widget behaviour reference
+
+| UI element               | Behaviour                                                           |
+| ------------------------ | ------------------------------------------------------------------- |
+| 💬 button (bottom-right) | Opens / closes the chat panel                                       |
+| Confidence badge         | 🟢 HIGH · 🟡 MEDIUM · 🔴 LOW — colour-coded per response            |
+| ⚠️ Flags detected        | Shown when any HIGH or MEDIUM verification flag is present          |
+| Debug panel `{ }`        | Toggle to see raw API response (flags, tool calls, conversation ID) |
+| Suggested prompts        | Clickable chips on the welcome screen for quick starts              |

@@ -281,13 +281,14 @@ async def test_transaction_type_filter_is_case_insensitive():
 # Edge Case 9 — Market data: whitespace-only symbol string is an error
 # ══════════════════════════════════════════════════════════════════════════════
 
-def test_market_data_whitespace_symbol_returns_error():
+async def test_market_data_whitespace_symbol_returns_error():
     """
     The LLM might pass "   " (spaces) as a symbol if it misunderstood the query.
     After stripping, the symbol list is empty — should return a structured error,
     not crash with an unhandled exception.
+    Uses ainvoke because get_market_data is an async tool.
     """
-    result = get_market_data.invoke({"symbols": "   "})
+    result = await get_market_data.ainvoke({"symbols": "   "})
     assert result["status"] == "error", (
         f"Whitespace symbol should produce error, got {result['status']}"
     )
@@ -298,11 +299,12 @@ def test_market_data_whitespace_symbol_returns_error():
 # Edge Case 10 — Market data: comma-separated symbols with extra spaces parsed correctly
 # ══════════════════════════════════════════════════════════════════════════════
 
-def test_market_data_comma_separated_symbols_with_spaces():
+async def test_market_data_comma_separated_symbols_with_spaces():
     """
     The tool docstring says: "Comma-separated ticker symbols (e.g. 'AAPL,MSFT,VTI')".
     The LLM might pass "AAPL, MSFT , VTI" with extra spaces.
     The tool must strip whitespace from each symbol and still return valid results.
+    Uses ainvoke because get_market_data is an async tool.
     """
     mock_ticker = MagicMock()
     mock_ticker.fast_info.currency = "USD"
@@ -315,7 +317,7 @@ def test_market_data_comma_separated_symbols_with_spaces():
 
     with patch("yfinance.Ticker", return_value=mock_ticker):
         # Extra spaces around each symbol
-        result = get_market_data.invoke({"symbols": " AAPL , MSFT , VTI "})
+        result = await get_market_data.ainvoke({"symbols": " AAPL , MSFT , VTI "})
 
     # Batch result: top-level "quotes" key with all 3 symbols
     assert result.get("status") != "error", (
