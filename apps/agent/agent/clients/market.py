@@ -53,6 +53,7 @@ class MarketDataClient:
                 "market_cap": getattr(info, "market_cap", None),
                 "volume": getattr(info, "three_month_average_volume", None),
                 "data_timestamp": datetime.now(UTC).isoformat(),
+                "source": "Yahoo Finance (via yfinance)",
             }
         except Exception as e:
             return {
@@ -80,4 +81,5 @@ class MarketDataClient:
             "status": "ok",
             "quotes": {s: r for s, r in zip(symbols, results)},
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Yahoo Finance (via yfinance)",
         }

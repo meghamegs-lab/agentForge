@@ -182,6 +182,7 @@ async def _rebalancing_plan(
                 "Consider rebalancing by directing new contributions to underweight buckets first."
             ),
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio (holdings) + Yahoo Finance (via yfinance) for current prices",
         }
 
     except GhostfolioError as e:

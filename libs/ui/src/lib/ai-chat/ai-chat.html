@@ -2,6 +2,8 @@
  Fortio AI Chat Widget
  - Floating button (bottom-right) toggles the chat panel
  - Chat panel shows conversation history + input
+ - 💡 Prompt Tips button reveals categorised prompt suggestions
+ - 🕐 History button shows past 10 conversations from localStorage
  ============================================================ -->
 
 <!-- ── Floating Action Button ── -->
@@ -21,7 +23,6 @@
 <!-- ── Chat Panel ── -->
 @if (isPanelOpen) {
   <div class="gf-ai-chat-panel">
-
     <!-- Header -->
     <div class="gf-ai-chat-header">
       <div class="gf-ai-chat-header-info">
@@ -31,9 +32,30 @@
           <div class="header-subtitle">AI Portfolio Assistant</div>
         </div>
       </div>
-      <button mat-icon-button (click)="closePanel()">
-        <span class="icon-symbol">✕</span>
-      </button>
+
+      <!-- Header action buttons -->
+      <div class="gf-ai-chat-header-actions">
+        <button
+          class="header-action-btn"
+          [class.header-action-btn-active]="isHistoryOpen"
+          [matTooltip]="
+            isHistoryOpen ? 'Close history' : 'View past conversations'
+          "
+          (click)="toggleHistory()"
+        >
+          🕐
+        </button>
+        <button
+          class="header-action-btn"
+          matTooltip="Start a new conversation"
+          (click)="startNewChat()"
+        >
+          ➕
+        </button>
+        <button mat-icon-button (click)="closePanel()">
+          <span class="icon-symbol">✕</span>
+        </button>
+      </div>
     </div>
 
     <!-- Messages -->
@@ -41,8 +63,8 @@
       @for (message of messages; track message.timestamp) {
         <div
           class="message"
-          [class.message-user]="message.role === 'user'"
           [class.message-assistant]="message.role === 'assistant'"
+          [class.message-user]="message.role === 'user'"
         >
           <!-- Assistant avatar -->
           @if (message.role === 'assistant') {
@@ -63,8 +85,8 @@
                 @for (suggestion of message.suggestions; track suggestion) {
                   <button
                     class="suggestion-chip"
-                    (click)="onSuggestionClick(suggestion)"
                     [title]="suggestion"
+                    (click)="onSuggestionClick(suggestion)"
                   >
                     {{ suggestion }}
                   </button>
@@ -89,8 +111,12 @@
                 <div class="message-debug-row">
                   <button
                     class="raw-toggle-btn"
+                    [title]="
+                      message.showRaw
+                        ? 'Hide structured output'
+                        : 'Show structured output'
+                    "
                     (click)="toggleRaw(message)"
-                    [title]="message.showRaw ? 'Hide structured output' : 'Show structured output'"
                   >
                     <span class="raw-toggle-icon">{{ '{' }} {{ '}' }}</span>
                     {{ message.showRaw ? 'Hide' : 'Debug' }}
@@ -103,23 +129,33 @@
             @if (message.showRaw && message.rawResponse) {
               <div class="raw-panel">
                 <div class="raw-panel-header">
-                  <span class="raw-panel-title">🔧 Structured Agent Response</span>
+                  <span class="raw-panel-title"
+                    >🔧 Structured Agent Response</span
+                  >
                   <div class="raw-panel-tools">
-                    @for (tool of message.rawResponse.tool_calls; track tool.tool_name) {
+                    @for (
+                      tool of message.rawResponse.tool_calls;
+                      track tool.tool_name
+                    ) {
                       <span
                         class="tool-chip"
-                        [class.tool-chip-ok]="tool.status === 'ok'"
                         [class.tool-chip-error]="tool.status === 'error'"
+                        [class.tool-chip-ok]="tool.status === 'ok'"
                       >
-                        {{ tool.status === 'ok' ? '✅' : '❌' }} {{ tool.tool_name }}
+                        {{ tool.status === 'ok' ? '✅' : '❌' }}
+                        {{ tool.tool_name }}
                       </span>
                     }
                     @if (message.rawResponse.tool_calls.length === 0) {
-                      <span class="tool-chip tool-chip-none">💬 LLM answered directly (no tools)</span>
+                      <span class="tool-chip tool-chip-none"
+                        >💬 LLM answered directly (no tools)</span
+                      >
                     }
                   </div>
                 </div>
-                <pre class="raw-panel-json">{{ formatRaw(message.rawResponse) }}</pre>
+                <pre class="raw-panel-json">{{
+                  formatRaw(message.rawResponse)
+                }}</pre>
               </div>
             }
           </div>
@@ -146,21 +182,124 @@
       }
     </div>
 
+    <!-- ── History Panel ───────────────────────────────────── -->
+    @if (isHistoryOpen) {
+      <div class="history-panel">
+        <div class="history-header">
+          <span class="history-title">🕐 Past Conversations</span>
+          <span class="history-count">
+            {{ historySnapshots.length }} / {{ 10 }} saved
+          </span>
+        </div>
+        <div class="history-body">
+          @if (historySnapshots.length === 0) {
+            <div class="history-empty">
+              No past conversations yet.<br />
+              Start chatting and they'll appear here.
+            </div>
+          }
+          @for (snapshot of historySnapshots; track snapshot.id) {
+            <div class="history-item" (click)="resumeConversation(snapshot)">
+              <div class="history-item-title">{{ snapshot.title }}</div>
+              <div class="history-item-meta">
+                <span class="history-item-date">{{
+                  formatSnapshotDate(snapshot.savedAt)
+                }}</span>
+                <button
+                  class="history-item-delete"
+                  matTooltip="Delete this conversation"
+                  (click)="deleteSnapshot(snapshot.id, $event)"
+                >
+                  🗑
+                </button>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    }
+    <!-- ── End History Panel ────────────────────────────────── -->
+
+    <!-- ── Prompt Tips Panel ────────────────────────────────── -->
+    @if (isPromptTipsOpen) {
+      <div class="prompt-tips-panel">
+        <div class="prompt-tips-header">
+          <span class="prompt-tips-title">💡 Prompt Suggestions</span>
+          <button class="prompt-tips-close" (click)="togglePromptTips()">
+            ✕
+          </button>
+        </div>
+        <div class="prompt-tips-body">
+          @for (category of promptCategories; track category.level) {
+            <div class="prompt-category">
+              <!-- Category heading -->
+              <div class="prompt-category-heading">
+                <span
+                  class="prompt-category-badge"
+                  [class.badge-advanced]="category.level === 'Advanced'"
+                  [class.badge-edge]="category.level === 'Edge Cases'"
+                  [class.badge-hard]="category.level === 'Hard'"
+                  [class.badge-simple]="category.level === 'Simple'"
+                >
+                  {{ category.emoji }} {{ category.level }}
+                </span>
+                <span class="prompt-category-desc">{{
+                  category.description
+                }}</span>
+              </div>
+
+              <!-- Groups within the category -->
+              @for (group of category.groups; track $index) {
+                <div class="prompt-group">
+                  @if (group.tool) {
+                    <div class="prompt-tool-name">{{ group.tool }}</div>
+                  }
+                  @for (item of group.prompts; track item.text) {
+                    <button
+                      class="prompt-item"
+                      (click)="onPromptSelect(item.text)"
+                    >
+                      <span class="prompt-item-text">{{ item.text }}</span>
+                      @if (item.note) {
+                        <span class="prompt-item-note">{{ item.note }}</span>
+                      }
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    }
+    <!-- ── End Prompt Tips Panel ──────────────────────────────── -->
 
     <!-- Input Area -->
     <div class="gf-ai-chat-input-area">
+      <!-- Prompt Tips toggle button -->
+      <button
+        class="prompt-tips-btn"
+        [class.prompt-tips-btn-active]="isPromptTipsOpen"
+        [matTooltip]="
+          isPromptTipsOpen ? 'Close prompt tips' : 'Show prompt suggestions'
+        "
+        (click)="togglePromptTips()"
+      >
+        💡
+      </button>
+
       <textarea
         class="gf-ai-chat-input"
         placeholder="Ask about your portfolio..."
         rows="1"
-        [(ngModel)]="inputText"
         [disabled]="isLoading"
+        [(ngModel)]="inputText"
         (keydown)="onKeydown($event)"
       ></textarea>
       <button
         class="send-button"
-        mat-icon-button
         color="primary"
+        mat-icon-button
         [disabled]="!inputText.trim() || isLoading"
         (click)="onSend()"
       >
@@ -172,6 +311,5 @@
     <div class="gf-ai-chat-footer">
       ⚠️ For educational purposes only — not financial advice.
     </div>
-
   </div>
 }

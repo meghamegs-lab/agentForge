@@ -75,6 +75,7 @@ async def _get_portfolio_summary(account_id: str = "") -> dict[str, Any]:
             "position_count": len(processed),
             "holdings": processed,
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio",
         }
 
     except GhostfolioError as e:

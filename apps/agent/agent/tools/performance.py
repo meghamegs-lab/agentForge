@@ -56,6 +56,7 @@ async def _get_performance(date_range: str = "ytd") -> dict[str, Any]:
             },
             "all_periods": periods,
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio",
         }
 
     except GhostfolioError as e:

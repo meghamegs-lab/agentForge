@@ -203,6 +203,7 @@ async def _scorecard() -> dict[str, Any]:
             "risk_flags": flags,
             "action_items": sorted(actions, key=lambda x: x["priority"]),
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio",
         }
 
     except GhostfolioError as e:

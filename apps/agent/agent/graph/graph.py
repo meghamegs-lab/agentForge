@@ -286,10 +286,10 @@ async def escalation_node(state: AgentState) -> dict[str, Any]:
         confidence=state.get("confidence"),
     )
     safe_response = (
-        "⚠️ I detected a potential issue with the accuracy of my previous response. "
-        "For safety I'm withholding it.\n\n"
-        "Please try rephrasing your question, or consult your Ghostfolio dashboard "
-        "directly for exact figures. If this keeps happening, contact support."
+        "⚠️ I was unable to verify the accuracy of my response against your actual portfolio data. "
+        "To protect you from potentially incorrect figures, I'm not showing it.\n\n"
+        "This usually happens when all data sources returned errors but I still attempted an answer. "
+        "Please try again, or check your Ghostfolio dashboard directly for exact figures."
     )
     return {
         "final_response": safe_response,

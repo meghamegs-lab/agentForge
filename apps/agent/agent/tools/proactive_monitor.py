@@ -212,6 +212,7 @@ async def _proactive_monitor(prev_snap_json: str = "") -> dict[str, Any]:
             "position_count": len(holdings),
             "current_snapshot": current_snapshot,  # caller should save for next session
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio",
         }
 
     except GhostfolioError as e:

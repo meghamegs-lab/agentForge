@@ -231,6 +231,7 @@ async def _market_context(macro_theme: str) -> dict[str, Any]:
                 "Macro outcomes are uncertain — treat as directional guidance only."
             ),
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio (holdings) + built-in sector macro sensitivity model",
         }
 
     except GhostfolioError as e:

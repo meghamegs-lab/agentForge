@@ -123,6 +123,7 @@ async def _analyze_diversification() -> dict[str, Any]:
                 "needs_rebalancing": len(concentration_flags) > 0,
             },
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio",
         }
 
     except GhostfolioError as e:

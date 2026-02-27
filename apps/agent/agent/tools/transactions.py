@@ -96,6 +96,7 @@ async def _get_transactions(
                 },
             },
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio",
         }
 
     except GhostfolioError as e:

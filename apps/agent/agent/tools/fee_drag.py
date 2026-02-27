@@ -139,6 +139,7 @@ async def _fee_drag(date_range: str = "max") -> dict[str, Any]:
             "fee_by_symbol": fee_symbols[:10],
             "fee_by_year": {k: round(v, 2) for k, v in sorted(fee_by_year.items())},
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio",
         }
 
     except GhostfolioError as e:

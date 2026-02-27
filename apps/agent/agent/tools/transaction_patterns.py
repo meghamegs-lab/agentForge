@@ -235,6 +235,7 @@ async def _transaction_patterns() -> dict[str, Any]:
             "behavioural_patterns": patterns,
             "coaching_summary": coaching,
             "data_timestamp": datetime.now(UTC).isoformat(),
+            "source": "Ghostfolio (transaction history) + Yahoo Finance (via yfinance) for current prices",
         }
 
     except GhostfolioError as e:
