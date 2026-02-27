@@ -28,5 +28,5 @@ USER appuser
 # Railway injects $PORT automatically; fall back to 8001 for local docker runs
 EXPOSE ${PORT:-8001}
 
-# Production entrypoint: FastAPI only (Chainlit is for local dev)
+# Production entrypoint: FastAPI server
 CMD ["sh", "-c", "uvicorn agent.api.main:app --host 0.0.0.0 --port ${PORT:-8001}"]

@@ -1,3 +1,4 @@
+# LangChain tool that calculates how much trading fees have cost as a percentage of total gross returns.
 """
 Tool: get_fee_drag_analysis
 Multi-step: transactions (all fees) + performance (gross returns) → computes fee drag %.
@@ -36,6 +37,7 @@ async def get_fee_drag_analysis(date_range: str = "max") -> dict[str, Any]:
     return await _fee_drag(date_range)
 
 
+# Core logic: aggregates all transaction fees and computes fee drag % relative to gross returns.
 async def _fee_drag(date_range: str = "max") -> dict[str, Any]:
     try:
         client = get_shared_client()
@@ -44,9 +46,13 @@ async def _fee_drag(date_range: str = "max") -> dict[str, Any]:
         holdings_data = await client.get_portfolio_holdings()
 
         activities = orders_data.get("activities", [])
+        # Normalise: Ghostfolio can return holdings as a list OR a dict keyed by symbol
+        raw_holdings = holdings_data.get("holdings", {})
+        if isinstance(raw_holdings, list):
+            raw_holdings = {h.get("symbol", f"pos_{i}"): h for i, h in enumerate(raw_holdings)}
         total_value = sum(
             h.get("value", 0) or 0
-            for h in holdings_data.get("holdings", {}).values()
+            for h in raw_holdings.values()
         )
 
         # ── Fee aggregation ────────────────────────────────────────

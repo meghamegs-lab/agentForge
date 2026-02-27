@@ -1,3 +1,4 @@
+# Pydantic request and response models for the /health and /api/chat FastAPI endpoints.
 """
 Pydantic schemas for the Fortio Agent API.
 
@@ -42,7 +43,9 @@ class VerificationFlag(BaseModel):
 class ChatResponse(BaseModel):
     """Response sent back to the Angular frontend."""
     answer: str
-    confidence: str                      # HIGH, MEDIUM, or LOW
-    flags: list[VerificationFlag]        # Verification warnings (empty = clean)
-    tool_calls: list[ToolCallInfo] = []  # Tools invoked during this turn (empty = LLM answered directly)
-    conversation_id: str                 # Echo back so Angular can continue the thread
+    confidence: str                              # HIGH, MEDIUM, or LOW
+    flags: list[VerificationFlag]                # Verification warnings (empty = clean)
+    tool_calls: list[ToolCallInfo] = []          # Tools invoked during this turn
+    conversation_id: str                         # Echo back so Angular can continue the thread
+    turn_number: int = 1                         # Which turn of the conversation this is (1-indexed)
+    context_entities: dict[str, list[str]] = {}  # Entities tracked across turns {"tickers": [...], "sectors": [...]}

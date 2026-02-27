@@ -1,3 +1,4 @@
+# FastAPI application that serves the Fortio agent over HTTP to the Angular frontend and external clients.
 """
 FastAPI REST endpoint for the Fortio AI agent.
 Called by Ghostfolio's Angular frontend chat component.
@@ -56,6 +57,7 @@ log = structlog.get_logger()
 
 # ── Lifespan: set up the checkpointer once at startup ─────────────────────────
 
+# Initialises the Postgres checkpointer at startup and tears it down cleanly on shutdown.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -138,12 +140,14 @@ app.add_middleware(
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+# Returns {"status": "ok"} — used by Railway / Docker health checks to confirm the service is up.
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     """Health check — used by Railway / Docker healthchecks."""
     return HealthResponse(status="ok", service="fortio-agent")
 
 
+# Receives a user message, runs the LangGraph agent, and returns the verified answer with metadata.
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
     """
@@ -192,6 +196,11 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
         "user_id": request.user_id,
         "final_response": "",
         "should_escalate": False,
+        # Multi-turn context — reasoning_node increments turn_number and
+        # populates context_entities; the checkpointer persists both so
+        # values from prior turns are available in the next turn.
+        "turn_number": 0,
+        "context_entities": {},
     }
 
     # Get the graph with checkpointer from app.state (set during lifespan)
@@ -250,6 +259,8 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
             flags=flags,
             tool_calls=tool_calls,
             conversation_id=conversation_id,
+            turn_number=final_state.get("turn_number", 1),
+            context_entities=final_state.get("context_entities", {}),
         )
 
     except Exception as e:

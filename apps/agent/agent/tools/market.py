@@ -1,3 +1,4 @@
+# LangChain tool that fetches live market data (price, 52w range, market cap) via yfinance.
 """
 Tool: get_market_data
 Fetches current market data for one or more symbols using yfinance.
@@ -13,6 +14,7 @@ from agent.clients.market import MarketDataClient
 _client = MarketDataClient()
 
 
+# Parses symbols string and dispatches to get_quote (single) or get_batch_quotes (multiple).
 @tool
 async def get_market_data(
     symbols: str, metrics: str = "price,52w_range,market_cap"

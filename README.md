@@ -45,7 +45,7 @@
 | **Tools**         | 11 domain tools — 5 core (portfolio, performance, transactions, diversification, market) + 6 advanced (fee drag, health scorecard, rebalancing plan, market context, transaction patterns, proactive risk monitor) |
 | **Verification**  | 5-stage pipeline: disclaimer injection · hallucination guard · data freshness · concentration risk · confidence scoring                                                                                            |
 | **API**           | FastAPI REST endpoint (`POST /api/chat`) with multi-turn conversation history via Postgres checkpointing                                                                                                           |
-| **UI**            | Chainlit chat interface (dev/demo) + embedded Angular chat widget in Ghostfolio                                                                                                                                    |
+| **UI**            | Embedded Angular chat widget in Ghostfolio (powered by the FastAPI REST endpoint)                                                                                                                                  |
 | **Observability** | LangSmith tracing                                                                                                                                                                                                  |
 | **Deployment**    | Railway (CI/CD via GitHub Actions)                                                                                                                                                                                 |
 
@@ -83,7 +83,6 @@ cd apps/agent
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env   # fill in ANTHROPIC_API_KEY + GHOSTFOLIO_ACCESS_TOKEN
-chainlit run agent/ui/chainlit_app.py   # Chainlit UI → http://localhost:8000
 uvicorn agent.api.main:app --port 8001  # FastAPI docs → http://localhost:8001/docs
 ```
 

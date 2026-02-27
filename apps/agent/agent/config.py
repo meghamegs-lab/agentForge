@@ -1,20 +1,58 @@
+# Loads all application settings from environment variables and the .env file into a typed singleton.
 """
 Fortio Agent – application settings.
 
 All config is loaded from environment variables (or .env file).
 Access the singleton:  from agent.config import settings
+
+CORS_ORIGINS in .env or shell accepts either format:
+  Comma-separated:  CORS_ORIGINS=http://localhost:4200,https://localhost:4200
+  JSON array:       CORS_ORIGINS=["http://localhost:4200","https://localhost:4200"]
 """
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
+from pydantic_settings.sources.providers.dotenv import DotEnvSettingsSource
+from pydantic_settings.sources.providers.env import EnvSettingsSource
 
 # Resolve the `apps/agent/` directory from this file's location so that
 # `.env` is found correctly regardless of the working directory the server
 # is started from (repo root, apps/agent/, etc.).
 _AGENT_DIR = Path(__file__).resolve().parent.parent
 
+
+# ── Custom env source that accepts comma-separated strings for list fields ─────
+
+class _CommaSeparatedListMixin:
+    """
+    Mixin for pydantic-settings env sources.
+
+    pydantic-settings v2 always calls json.loads() on list/dict fields before
+    any pydantic validator runs.  This mixin overrides `decode_complex_value` so
+    that a plain comma-separated string (e.g. "a,b,c") is accepted in addition
+    to the standard JSON-array format (e.g. '["a","b","c"]').
+    """
+
+    # Splits "a,b,c" comma strings into a Python list; bypasses pydantic-settings' default JSON-only parser.
+    def decode_complex_value(self, field_name: str, field: Any, value: Any) -> Any:
+        if isinstance(value, str) and not value.strip().startswith(("[", "{")):
+            # Comma-separated → split into list; strip whitespace around each item
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return super().decode_complex_value(field_name, field, value)  # type: ignore[misc]
+
+
+class _CSEnvSource(_CommaSeparatedListMixin, EnvSettingsSource):
+    """OS-level environment variable source with comma-separated list support."""
+
+
+class _CSDotEnvSource(_CommaSeparatedListMixin, DotEnvSettingsSource):
+    """.env file source with comma-separated list support."""
+
+
+# ── Settings ───────────────────────────────────────────────────────────────────
 
 class Settings(BaseSettings):
     """
@@ -50,7 +88,12 @@ class Settings(BaseSettings):
 
     # ── Database & Checkpointing ──────────────────────────────────────────────
     database_url: str = ""
-    redis_url: str = "redis://localhost:6379/0"
+    # Redis logical DB allocation:
+    #   DB 0 → Ghostfolio (default when only REDIS_HOST/REDIS_PORT are set)
+    #   DB 1 → Fortio agent (caching, rate-limit counters)
+    # Using separate logical DBs keeps the two services' keyspaces isolated
+    # without needing two Redis instances.
+    redis_url: str = "redis://localhost:6379/1"
     # LangGraph conversation checkpointing — uses DATABASE_URL (Postgres).
     # Set to "memory" to fall back to in-memory checkpointing (no persistence).
     checkpoint_backend: str = "postgres"
@@ -58,13 +101,16 @@ class Settings(BaseSettings):
     # ── CORS ──────────────────────────────────────────────────────────────────
     # Comma-separated list of allowed origins for the FastAPI CORS middleware.
     # Defaults cover local Angular dev server (http + https) and Ghostfolio.
-    # Override CORS_ORIGINS in .env or Railway to add your production domain.
+    # Override CORS_ORIGINS in .env or Railway to add/replace domains.
+    #
+    # Accepted .env formats (both work):
+    #   CORS_ORIGINS=http://localhost:4200,https://localhost:4200
+    #   CORS_ORIGINS=["http://localhost:4200","https://localhost:4200"]
     cors_origins: list[str] = [
         "http://localhost:4200",
         "https://localhost:4200",
         "http://localhost:3333",
         "https://localhost:3333",
-        "http://localhost:8000",
         "https://ghostfolio-production-453e.up.railway.app",
     ]
 
@@ -74,6 +120,33 @@ class Settings(BaseSettings):
     portfolio_concentration_threshold: float = 0.20
     market_data_freshness_minutes: int = 15
     max_tool_retries: int = 2
+
+    # ── Custom sources: teach pydantic-settings to parse comma-separated lists ─
+    # Swaps the default pydantic-settings env/dotenv sources for comma-aware custom variants.
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        **kwargs: Any,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """
+        Replace the default env + dotenv sources with comma-aware variants.
+        The custom sources accept "a,b,c" in addition to '["a","b","c"]' for
+        list[str] fields — specifically CORS_ORIGINS.
+
+        Uses **kwargs for the trailing sources (secrets_dir / file_secret_settings)
+        so this works across pydantic-settings 2.x minor versions.
+        """
+        remaining = tuple(kwargs.values())  # secrets source(s), version-agnostic
+        return (
+            init_settings,
+            _CSEnvSource(settings_cls),
+            _CSDotEnvSource(settings_cls),
+            *remaining,
+        )
 
 
 settings = Settings()

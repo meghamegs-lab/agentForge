@@ -1,3 +1,4 @@
+# Five-stage verification pipeline: disclaimer → hallucination → freshness → concentration → confidence.
 """
 Verification Layer — All 5 production checks for the finance agent.
 
@@ -34,6 +35,7 @@ DISCLAIMER_TEXT = (
 )
 
 
+# Appends a financial disclaimer to the response when investment-advice language is detected.
 def check_disclaimer(
     response: str, tool_results: list[dict]
 ) -> tuple[str, list[VerificationFlag]]:
@@ -59,6 +61,7 @@ def check_disclaimer(
 
 # ─── 2. Hallucination Guard ───────────────────────────────────────────────────
 
+# Extracts all numeric values (prices, percentages, dollar amounts) from a text string using regex.
 def _extract_numbers(text: str) -> set[str]:
     """Extract all numeric values from text (prices, percentages, dollar amounts)."""
     # Match: $1,234.56 | 12.34% | 1234.56 | 1,234
@@ -68,12 +71,14 @@ def _extract_numbers(text: str) -> set[str]:
     return {re.sub(r"[$,%]", "", m).replace(",", "") for m in matches if len(m) > 1}
 
 
+# Flattens all tool result dicts to JSON and extracts every numeric value from them.
 def _extract_numbers_from_tool_results(tool_results: list[dict]) -> set[str]:
     """Flatten all numeric values from tool result dicts."""
     text = json.dumps(tool_results)
     return _extract_numbers(text)
 
 
+# Returns True if every tool result carries an error/failure status — meaning no real data was fetched.
 def _all_tools_failed(tool_results: list[dict]) -> bool:
     """
     Return True if every tool result has a failure status
@@ -85,6 +90,7 @@ def _all_tools_failed(tool_results: list[dict]) -> bool:
     )
 
 
+# Flags financial numbers in the response that cannot be traced back to any tool result.
 def check_hallucination(
     response: str, tool_results: list[dict]
 ) -> tuple[str, list[VerificationFlag]]:
@@ -152,6 +158,7 @@ def check_hallucination(
     return response, flags
 
 
+# Returns True if the number string represents a meaningful financial value (not a year or tiny count).
 def _looks_financial(num_str: str) -> bool:
     """Return True if the number looks like a financial value worth flagging."""
     try:
@@ -166,6 +173,7 @@ def _looks_financial(num_str: str) -> bool:
 
 # ─── 3. Data Freshness Check ──────────────────────────────────────────────────
 
+# Warns when any tool result's data_timestamp is older than the configured freshness threshold.
 def check_freshness(
     response: str, tool_results: list[dict]
 ) -> tuple[str, list[VerificationFlag]]:
@@ -219,6 +227,7 @@ def check_freshness(
 
 # ─── 4. Concentration Warning ─────────────────────────────────────────────────
 
+# Appends a concentration warning to the response if any portfolio position exceeds the threshold.
 def check_concentration(
     response: str, tool_results: list[dict]
 ) -> tuple[str, list[VerificationFlag]]:
@@ -245,7 +254,7 @@ def check_concentration(
 
         # From portfolio summary — direct check
         if "holdings" in result:
-            for holding in result.get("holdings", []):
+            for holding in (result.get("holdings") or []):
                 alloc = holding.get("allocation_percent", 0) / 100
                 if alloc >= threshold:
                     symbol = holding.get("symbol", "Unknown")
@@ -284,6 +293,7 @@ HEDGING_KEYWORDS = {
 }
 
 
+# Scores the agent response as HIGH, MEDIUM, or LOW confidence based on tool usage and response language.
 def check_confidence(
     response: str,
     tool_results: list[dict],
@@ -327,6 +337,7 @@ def check_confidence(
 
 # ─── Pipeline ─────────────────────────────────────────────────────────────────
 
+# Runs all 5 checks in sequence and returns the final response, consolidated flags, and confidence level.
 def run_verification_pipeline(
     response: str,
     tool_results: list[dict],

@@ -1,3 +1,4 @@
+# Aggregates all LangChain @tool functions into the ALL_TOOLS list used by the agent graph.
 from agent.tools.diversification import analyze_diversification
 from agent.tools.fee_drag import get_fee_drag_analysis
 from agent.tools.health_scorecard import get_portfolio_health_scorecard

@@ -1,3 +1,4 @@
+# Assembles the LangGraph reasoning loop: reasoning → tools → collect_results → verify → end.
 """
 LangGraph agent graph for Fortio, the Ghostfolio Finance Agent.
 Nodes: reasoning → tool_execution → verification → output
@@ -11,7 +12,7 @@ Checkpointing:
       await graph.ainvoke(state, config=config)
 
   - FastAPI uses AsyncPostgresSaver (persistent across restarts)
-  - Chainlit uses MemorySaver (in-memory, sufficient for dev sessions)
+  - CLI/dev uses MemorySaver (in-memory, sufficient for a single process)
 """
 from __future__ import annotations
 
@@ -37,6 +38,7 @@ from agent.verification import run_verification_pipeline
 # Rebuilding ChatAnthropic on every reasoning step adds overhead and
 # prevents connection pooling inside the SDK.
 
+# Builds the primary LLM (Claude or GPT-4o fallback) with all tools bound — called once at module import.
 def _build_llm():
     """Build the LLM with all tools bound. Called exactly once."""
     if settings.anthropic_api_key:
@@ -58,22 +60,137 @@ _llm = _build_llm()   # ← module-level singleton
 _log = structlog.get_logger()
 
 
-# ── Nodes ─────────────────────────────────────────────────────────────────────
+# ── Context entity extraction ──────────────────────────────────────────────────
 
-async def reasoning_node(state: AgentState) -> dict[str, Any]:
+# Words that look like ticker symbols (all-caps, 1-5 chars) but are NOT tickers.
+# Kept narrow — only the most common false-positives from tool JSON + LLM output.
+_TICKER_STOPWORDS: frozenset[str] = frozenset({
+    "HIGH", "LOW", "ETF", "USD", "THE", "FOR", "AND", "YOU", "YOUR", "NOT",
+    "ALL", "ARE", "MEDIUM", "INFO", "ROAI", "YTD", "YES", "NO", "TOP",
+    "BUY", "SELL", "FEE", "DATA", "API", "NONE", "TRUE", "NULL", "GOOD",
+    "BAD", "RISK", "FEES", "URL", "N/A", "OK", "MAX",
+})
+
+
+# Scans ToolMessage results in conversation history to extract ticker symbols, sectors, and time periods.
+def _extract_context_entities(messages: list) -> dict[str, list[str]]:
     """
-    Call the LLM with conversation history.
-    The LLM decides which tools to call (or responds directly).
-    Uses the module-level LLM singleton — no re-instantiation per request.
+    Scan ToolMessage results in the conversation history to extract structured
+    entities: tickers, sectors, and time periods.
+
+    This is called once per reasoning step and the result is:
+      1. Stored in AgentState.context_entities (persisted by checkpointer)
+      2. Injected into the system message as an "Active Conversation Context"
+         block so the LLM can resolve pronouns like "those" or "them" without
+         re-calling get_portfolio_summary unnecessarily.
+
+    Only ToolMessages are scanned (structured JSON) to avoid false positives
+    from LLM prose.
     """
-    messages = [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"]
-    response = await _llm.ainvoke(messages)
+    tickers: set[str] = set()
+    sectors: set[str] = set()
+    periods: set[str] = set()
+
+    for msg in messages:
+        if not isinstance(msg, ToolMessage):
+            continue
+        try:
+            data = json.loads(msg.content) if isinstance(msg.content, str) else {}
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+        # Holdings list: [{"symbol": "AAPL", "allocation": 0.15, ...}]
+        for holding in data.get("holdings", []):
+            if sym := holding.get("symbol"):
+                tickers.add(str(sym).upper())
+
+        # Single-symbol market data response: {"symbol": "NVDA", "price": ...}
+        if sym := data.get("symbol"):
+            tickers.add(str(sym).upper())
+
+        # Batch market data: {"data": {"AAPL": {...}, "MSFT": {...}}}
+        for sym in data.get("data", {}):
+            if isinstance(sym, str) and 1 <= len(sym) <= 5 and sym.replace(".", "").isalpha():
+                tickers.add(sym.upper())
+
+        # Sector breakdown (analyze_diversification tool)
+        for entry in data.get("sectors", []) + data.get("sector_breakdown", []):
+            name = entry.get("name") or entry.get("sector")
+            if name and isinstance(name, str):
+                sectors.add(name)
+
+        # Time periods present in performance data
+        for period in ("1d", "ytd", "1y", "5y", "max"):
+            if period in data:
+                periods.add(period)
+
     return {
-        "messages": [response],
-        "reasoning_steps": state.get("reasoning_steps", 0) + 1,
+        "tickers": sorted(tickers - _TICKER_STOPWORDS),
+        "sectors": sorted(sectors),
+        "periods": sorted(periods),
     }
 
 
+# ── Nodes ─────────────────────────────────────────────────────────────────────
+
+# Invokes the LLM with the full conversation history and a dynamically injected context block for pronoun resolution.
+async def reasoning_node(state: AgentState) -> dict[str, Any]:
+    """
+    Call the LLM with conversation history + dynamic context injection.
+
+    On every reasoning step:
+    1. Extract tickers/sectors/periods from all ToolMessages in history
+    2. If turn > 1 and entities exist, append an "Active Conversation Context"
+       block to the system prompt — this is what lets Claude resolve "THOSE"
+       correctly without asking the user to repeat the stock names
+    3. Increment turn_number and persist context_entities back to state
+       (the checkpointer saves both for the next turn)
+    """
+    # Increment turn counter (0 on first ever turn → 1 after this node runs)
+    turn = state.get("turn_number", 0) + 1
+
+    # Extract structured entities from prior tool results
+    entities = _extract_context_entities(state["messages"])
+
+    # Build dynamic context block (only injected from turn 2 onwards when
+    # there are entities to share — avoids cluttering the first-turn prompt)
+    context_lines: list[str] = []
+    if entities["tickers"]:
+        symbols = ", ".join(entities["tickers"])
+        context_lines.append(
+            f"Securities discussed in this conversation: {symbols}. "
+            "When the user says 'those', 'them', 'it', or 'that stock', "
+            f"resolve to these symbols — do NOT ask for clarification."
+        )
+    if entities["sectors"]:
+        context_lines.append(
+            f"Sectors discussed: {', '.join(entities['sectors'])}."
+        )
+    if entities["periods"]:
+        context_lines.append(
+            f"Time periods already established: {', '.join(entities['periods'])}. "
+            "Re-use these when the user says 'last year', 'that period', etc."
+        )
+
+    system_content = SYSTEM_PROMPT
+    if context_lines and turn > 1:
+        system_content += (
+            f"\n\n## Active Conversation Context (Turn {turn})\n"
+            + "\n".join(context_lines)
+        )
+
+    messages = [SystemMessage(content=system_content)] + state["messages"]
+    response = await _llm.ainvoke(messages)
+
+    return {
+        "messages": [response],
+        "reasoning_steps": state.get("reasoning_steps", 0) + 1,
+        "turn_number": turn,
+        "context_entities": entities,
+    }
+
+
+# Runs the 5-stage verification pipeline on the final LLM response before it is returned to the user.
 async def verification_node(state: AgentState) -> dict[str, Any]:
     """
     Run all 5 verification checks on the final LLM response.
@@ -115,6 +232,7 @@ async def verification_node(state: AgentState) -> dict[str, Any]:
     }
 
 
+# Harvests ToolMessage JSON payloads from the message list and accumulates them in state.tool_results.
 def tool_result_collector_node(state: AgentState) -> dict[str, Any]:
     """
     After tools execute, collect their results into state for the verification layer.
@@ -133,6 +251,7 @@ def tool_result_collector_node(state: AgentState) -> dict[str, Any]:
 
 # ── Routing ───────────────────────────────────────────────────────────────────
 
+# Returns "tools" if the last LLM message contains tool_calls, otherwise routes to "verify".
 def should_use_tools(state: AgentState) -> str:
     """Route to tools if the LLM requested tool calls, else go to verification."""
     last_message = state["messages"][-1]
@@ -141,6 +260,7 @@ def should_use_tools(state: AgentState) -> str:
     return "verify"
 
 
+# Returns "escalate" if a HIGH-severity hallucination flag is present, otherwise ends the graph normally.
 def should_escalate(state: AgentState) -> str:
     """Route to escalation node if high-severity hallucination detected."""
     if state.get("should_escalate"):
@@ -150,6 +270,7 @@ def should_escalate(state: AgentState) -> str:
 
 # ── Nodes (continued) ─────────────────────────────────────────────────────────
 
+# Triggered on confirmed hallucination — replaces the agent response with a safe fallback and logs the event.
 async def escalation_node(state: AgentState) -> dict[str, Any]:
     """
     Human-in-the-loop escalation handler.
@@ -178,6 +299,7 @@ async def escalation_node(state: AgentState) -> dict[str, Any]:
 
 # ── Graph Assembly ────────────────────────────────────────────────────────────
 
+# Wires all nodes and edges into a compiled LangGraph StateGraph with an optional checkpointer.
 def build_graph(checkpointer=None):
     """
     Build and compile the LangGraph agent graph.
@@ -219,7 +341,7 @@ def build_graph(checkpointer=None):
     return graph.compile(checkpointer=checkpointer)
 
 
-# ── Default singleton (Chainlit dev UI) ───────────────────────────────────────
+# ── Default singleton (CLI / dev) ─────────────────────────────────────────────
 # Uses MemorySaver — persists for the lifetime of the process.
 # FastAPI creates its own graph instance via lifespan with AsyncPostgresSaver.
 agent_graph = build_graph(checkpointer=MemorySaver())

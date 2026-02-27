@@ -1,3 +1,4 @@
+# LangChain tool that computes sector/geography/asset-class breakdown and flags concentration risk.
 """
 Tool: analyze_diversification
 Computes sector, geography, asset class breakdown and risk flags.
@@ -14,6 +15,7 @@ from agent.config import settings
 
 # ── Implementation (importable in unit tests without @tool overhead) ──────────
 
+# Core logic: aggregates sector/geography/asset-class weights and computes a 0-100 diversification score.
 async def _analyze_diversification() -> dict[str, Any]:
     """
     Core logic for analyze_diversification.
@@ -131,6 +133,7 @@ async def _analyze_diversification() -> dict[str, Any]:
 
 # ── LangChain Tool (used by the graph) ────────────────────────────────────────
 
+# LangChain @tool wrapper — delegates to _analyze_diversification; used by the agent graph.
 @tool
 async def analyze_diversification() -> dict[str, Any]:
     """

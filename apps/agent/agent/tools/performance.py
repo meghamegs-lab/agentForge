@@ -1,3 +1,4 @@
+# LangChain tool that retrieves portfolio performance metrics for a requested time period from Ghostfolio.
 """
 Tool: get_performance
 Returns portfolio performance metrics across multiple time periods.
@@ -13,6 +14,7 @@ from agent.clients.ghostfolio import GhostfolioError, get_shared_client
 
 # ── Implementation (importable in unit tests without @tool overhead) ──────────
 
+# Core logic: fetches and reshapes Ghostfolio performance data for the requested date range.
 async def _get_performance(date_range: str = "ytd") -> dict[str, Any]:
     """
     Core logic for get_performance.
@@ -64,6 +66,7 @@ async def _get_performance(date_range: str = "ytd") -> dict[str, Any]:
 
 # ── LangChain Tool (used by the graph) ────────────────────────────────────────
 
+# LangChain @tool wrapper — delegates to _get_performance; used by the agent graph.
 @tool
 async def get_performance(date_range: str = "ytd") -> dict[str, Any]:
     """

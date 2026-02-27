@@ -1,3 +1,4 @@
+# LangChain tool that computes exact buy/sell dollar amounts needed to reach target asset allocations.
 """
 Tool: get_rebalancing_plan
 Multi-step: holdings + market prices → computes exact buy/sell dollar amounts per position.
@@ -51,6 +52,7 @@ async def get_rebalancing_plan(
     )
 
 
+# Core logic: classifies holdings into asset buckets, computes deltas, and generates per-position trades.
 async def _rebalancing_plan(
     tgt_us: float,
     tgt_intl: float,
@@ -61,7 +63,13 @@ async def _rebalancing_plan(
         client = get_shared_client()
         data = await client.get_portfolio_holdings()
 
-        holdings = data.get("holdings", {})
+        # Normalise: Ghostfolio can return holdings as a list OR a dict keyed by symbol
+        raw = data.get("holdings", {})
+        if isinstance(raw, list):
+            holdings = {h.get("symbol", f"pos_{i}"): h for i, h in enumerate(raw)}
+        else:
+            holdings = raw or {}
+
         if not holdings:
             return {"status": "empty", "message": "No holdings to rebalance."}
 
@@ -70,6 +78,7 @@ async def _rebalancing_plan(
             return {"status": "empty", "message": "Portfolio has no value."}
 
         # ── Classify each holding ──────────────────────────────────
+        # Maps a single holding to US_EQUITY, INTL_EQUITY, BONDS, or CASH based on asset class and country.
         def classify(h: dict) -> str:
             ac = h.get("assetClass", "EQUITY")
             countries = [c.get("name", "") for c in h.get("countries", [])]
@@ -120,7 +129,7 @@ async def _rebalancing_plan(
                 continue
 
             # Fetch current price for share count estimate
-            price_data = _market.get_quote(sym)
+            price_data = await _market.get_quote(sym)
             price = price_data.get("current_price") if price_data.get("status") == "ok" else None
             shares_estimate = round(abs(trade_amount) / price, 2) if price else None
 
