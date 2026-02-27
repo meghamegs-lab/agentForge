@@ -16,8 +16,8 @@ by integrating with [Ghostfolio](https://ghostfol.io), the open-source wealth ma
 - **Agent:** LangGraph (state machine) + Claude Sonnet (primary LLM) + GPT-4o (fallback)
 - **Tools:** 11 domain tools — 5 core (Ghostfolio REST API) + 6 advanced multi-step
 - **Verification:** 5-stage pipeline (disclaimer, hallucination guard, freshness, concentration, confidence)
-- **UI:** FastAPI REST API (production, deployed) + **Typer CLI** (terminal)
-- **Observability:** LangSmith
+- **Interfaces:** FastAPI REST API · Typer CLI (`fortio`) · MCP server (`fortio mcp`)
+- **Observability:** LangSmith tracing + structured eval suite (60+ tests)
 - **Deployment:** Railway (CI/CD via GitHub Actions)
 
 ---
@@ -26,14 +26,16 @@ by integrating with [Ghostfolio](https://ghostfol.io), the open-source wealth ma
 
 ### 1. Clone and set up Python environment
 
-```bash
+\`\`\`bash
+
 # From the monorepo root
+
 cd apps/agent
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+source .venv/bin/activate # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
-```
+\`\`\`
 
 ### 2. Get your API keys
 
@@ -45,66 +47,72 @@ pip install -r requirements-dev.txt
 
 ### 3. Configure environment
 
-```bash
+\`\`\`bash
 cp .env.example .env
+
 # Edit .env and fill in your API keys
-# For MVP, the Ghostfolio demo API requires no token for public endpoints
-```
+
+\`\`\`
 
 ### 4. Get a Ghostfolio bearer token (for authenticated endpoints)
 
-```bash
-# Using the demo instance — get the access token from ghostfol.io/en/demo
+\`\`\`bash
 curl -X POST https://ghostfol.io/api/v1/auth/anonymous \
-  -H "Content-Type: application/json" \
-  -d '{"accessToken": "DEMO_ACCESS_TOKEN"}'
+ -H "Content-Type: application/json" \
+ -d '{"accessToken": "DEMO_ACCESS_TOKEN"}'
+
 # Copy the authToken from the response into GHOSTFOLIO_ACCESS_TOKEN in .env
-```
 
-### 5. Run tests
+\`\`\`
 
-```bash
-pytest tests/unit/ -v       # unit tests (mocked, no network)
-pytest tests/eval/ -v       # eval suite (correctness, tool selection, edge cases)
-```
+### 5. Install the CLI and run tests
+
+\`\`\`bash
+
+# Install as editable so the `fortio` command is available
+
+pip install -e .
+
+# Unit tests (mocked, no network)
+
+pytest tests/unit/ -v
+
+# Eval suite (correctness, tool selection, edge cases, multi-step)
+
+pytest tests/eval/ -v
+\`\`\`
 
 ---
 
 ## CLI — Command Line Interface
 
 Fortio ships a **Typer-powered CLI** (`fortio`) for quick terminal access to the agent without
-starting a server. It supports single-shot queries, an interactive REPL, and server management.
+starting a server. It supports single-shot queries, an interactive REPL, server management,
+and an MCP server mode.
 
-### Install as a CLI Tool
+### Install the CLI
 
 #### Option A — Editable install (recommended for development)
 
-```bash
-# From apps/agent/ with your virtual environment active
+\`\`\`bash
 cd apps/agent
 pip install -e .
-```
-
-After installation the `fortio` command is available system-wide in your virtual environment:
-
-```bash
 fortio --help
-```
+\`\`\`
 
-#### Option B — Install dependencies only (without registering the entry point)
+#### Option B — Run as a Python module (no install required)
 
-```bash
+\`\`\`bash
 pip install -r requirements.txt
-# Then invoke via Python module:
 python -m agent.cli --help
-```
+\`\`\`
 
 #### Option C — Install from PyPI (once published)
 
-```bash
+\`\`\`bash
 pip install fortio-agent
 fortio --help
-```
+\`\`\`
 
 ---
 
@@ -112,93 +120,94 @@ fortio --help
 
 #### `fortio ask` — Single question, print answer, exit
 
-```bash
-# Basic question
+\`\`\`bash
 fortio ask "What does my portfolio look like?"
-
-# With verbose output (shows which tools were called)
 fortio ask "How concentrated am I in tech?" --verbose
-
-# Specify a user ID (for multi-user Ghostfolio setups)
 fortio ask "What are my top performers?" --user-id alice
-```
+\`\`\`
 
 #### `fortio chat` — Interactive multi-turn REPL
 
-```bash
-# Start a new session
+\`\`\`bash
 fortio chat
-
-# Resume a prior session (history stored in-memory, same process only)
 fortio chat --conversation-id 550e8400-e29b-41d4-a716-446655440000
-
-# Show tool call details on every turn
 fortio chat --verbose
-```
+\`\`\`
 
 Inside the REPL:
 
-- Type your question and press **Enter**
-- Type `exit`, `quit`, or `q` to end the session
-- Press **Ctrl+C** to interrupt at any time
+| Command      | Action                            |
+| ------------ | --------------------------------- |
+| `/help`      | Show topic suggestions grid       |
+| `/tools`     | List all 11 available agent tools |
+| `/clear`     | Print a visual separator          |
+| `exit` / `q` | End the session                   |
+| **Ctrl+C**   | Interrupt at any time             |
 
 Example session:
 
-```
+\`\`\`
 Fortio Chat ─────────────────────────────────────────
- Welcome to Fortio, your Ghostfolio Finance Assistant!
- ...
+Welcome to Fortio, your Ghostfolio Finance Assistant!
+...
 Session: 4f3c2a1b-...
 
 You: What's my overall portfolio value?
 ╭─ Fortio ──────────────────────────────────────────╮
-│  Your total portfolio value is $124,580 across 12  │
-│  holdings ...                                      │
-│                                       🟢 Confidence: HIGH │
+│ Your total portfolio value is $124,580 across 12 │
+│ holdings ... │
+│ 🟢 Confidence: HIGH │
 ╰───────────────────────────────────────────────────╯
+💡 Follow-up suggestions
 
-You: Which sector am I most exposed to?
-...
+1. How has my portfolio performed YTD?
+2. Am I too concentrated in any sector?
+3. Give me a portfolio health scorecard
+
 You: quit
 Goodbye! 👋
-```
+\`\`\`
 
 #### `fortio serve` — Start the FastAPI server
 
-```bash
-# Default: binds to 0.0.0.0:8001
-fortio serve
+\`\`\`bash
+fortio serve # default: 0.0.0.0:8001
+fortio serve --port 9000 # custom port
+fortio serve --reload # dev mode with hot-reload
+fortio serve --workers 4 # production multi-worker
+\`\`\`
 
-# Custom port
-fortio serve --port 9000
+API docs: `http://localhost:8001/docs`
 
-# Development mode with hot-reload
-fortio serve --reload
+#### `fortio mcp` — Start the MCP server
 
-# Multiple workers (production; incompatible with --reload)
-fortio serve --workers 4
-```
+\`\`\`bash
+fortio mcp
+\`\`\`
 
-API docs are available at `http://localhost:8001/docs` once the server is running.
+Starts the Fortio MCP (Model Context Protocol) server on **stdio**, exposing all 11 portfolio
+tools + 3 resources + 1 prompt template to Claude Desktop, Cursor, or any MCP-compatible AI host.
+
+See the [MCP section](#mcp--model-context-protocol) below for full setup instructions.
 
 #### `fortio version` — Show active configuration
 
-```bash
+\`\`\`bash
 fortio version
-```
+\`\`\`
 
-```
+\`\`\`
 ╭─ Version Info ──────────────────────────────────╮
-│  Fortio – Ghostfolio Finance AI Agent           │
-│                                                 │
-│  Version:        0.1.0                          │
-│  Primary model:  claude-haiku-4-5               │
-│  Fallback model: gpt-4o-mini                    │
-│  Environment:    development                    │
-│  Checkpoint:     postgres                       │
-│  Log level:      INFO                           │
+│ Fortio – Ghostfolio Finance AI Agent │
+│ │
+│ Version: 0.1.0 │
+│ Primary model: claude-haiku-4-5 │
+│ Fallback model: gpt-4o-mini │
+│ Environment: development │
+│ Checkpoint: postgres │
+│ Log level: INFO │
 ╰─────────────────────────────────────────────────╯
-```
+\`\`\`
 
 ---
 
@@ -209,95 +218,265 @@ fortio version
 | `fortio ask`                 | Quick one-off queries, scripting        | None                       | None        |
 | `fortio chat`                | Interactive exploration in the terminal | In-memory (session only)   | None        |
 | `fortio serve` + `/api/chat` | Angular/Ghostfolio frontend             | Postgres (across restarts) | Full        |
+| `fortio mcp`                 | Claude Desktop / Cursor integration     | Host-managed               | Host        |
 
 > **Note:** `fortio chat` and `fortio ask` use `MemorySaver` — conversation history is
 > kept only for the lifetime of the process and is not persisted to Postgres.
 
 ---
 
-## Cursor IDE Setup — Get the Most Out of Claude
+## MCP — Model Context Protocol
 
-### Step 1: Enable Cursor Rules
+Fortio can run as an **MCP server**, letting Claude Desktop, Cursor, and other MCP-compatible
+hosts query your Ghostfolio portfolio using natural language — with no browser and no API keys
+pasted into a chat box.
 
-The `.cursor/rules/agentforge.mdc` file is already in this repo.
-Cursor automatically picks it up. To verify:
+### What the MCP server exposes
 
-1. Open Cursor → Settings (Cmd+,) → Rules
-2. Confirm `agentforge.mdc` appears under Project Rules
+| Type          | Count | Details                                                                |
+| ------------- | ----- | ---------------------------------------------------------------------- |
+| **Tools**     | 11    | All portfolio, performance, diversification, and market data tools     |
+| **Resources** | 3     | `portfolio://summary`, `portfolio://performance`, `portfolio://health` |
+| **Prompts**   | 1     | `portfolio-analysis` (pre-loads live data; focus: risk/perf/fees/all)  |
 
-### Step 2: Set Claude as your model
+### Claude Desktop setup
 
-1. Cursor → Settings → Models
-2. Select **claude-sonnet-4-5** or **claude-opus-4-5** as default
-3. Add your Anthropic API key under Settings → API Keys
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json`
+(Windows: `%APPDATA%/Claude/claude_desktop_config.json`):
 
-### Step 3: Use Claude effectively in Cursor
+\`\`\`json
+{
+"mcpServers": {
+"fortio": {
+"command": "fortio",
+"args": ["mcp"],
+"env": {
+"GHOSTFOLIO_BASE_URL": "https://your-ghostfolio.railway.app",
+"GHOSTFOLIO_ACCESS_TOKEN": "your-security-token"
+}
+}
+}
+}
+\`\`\`
 
-#### For generating new tool code:
+Restart Claude Desktop — the Fortio tools appear in the tool list automatically.
 
-Open the command palette (Cmd+K) and type:
+### Cursor setup
 
-```
-Create a new LangGraph tool following the pattern in agent/tools/portfolio.py
-that [describe what you want]. Include unit tests in tests/unit/tools/.
-```
+1. Open Cursor → **Settings** → **MCP**
+2. Click **Add server**
+3. Paste the same JSON block as above
 
-#### For TDD — write tests first:
+### Using the `portfolio-analysis` prompt template
 
-```
-Write failing pytest unit tests for a tool called [name] that [behavior].
-Use respx to mock httpx. Follow the pattern in tests/unit/tools/test_tools.py.
-```
+In Claude Desktop, open the **Prompt Library** and select **portfolio-analysis**.
+You can optionally specify a focus area:
 
-#### For debugging agent behavior:
+| Focus value   | What Claude analyses                                        |
+| ------------- | ----------------------------------------------------------- |
+| `risk`        | Concentration risk, sector exposure, rebalancing needs      |
+| `performance` | Returns, period comparisons, best/worst performers          |
+| `fees`        | Fee drag, total fees paid, cost reduction opportunities     |
+| `all`         | Comprehensive: diversification, performance, fees, and risk |
 
-```
-I'm seeing this LangSmith trace [paste trace]. The agent is calling the wrong tool
-for this query. What's wrong with the tool docstring or routing?
-```
+The prompt fetches **live portfolio data** (holdings + YTD performance + health score) and
+embeds it into context before Claude responds — no explicit tool calls required.
 
-#### For the verification layer:
+### MCP resources (passive context loading)
 
-```
-Add a new verification check called [name] to agent/verification/__init__.py
-following the pattern of the existing 5 checks. Add it to run_verification_pipeline().
-Write the unit tests first.
-```
+Resources let Claude load portfolio data as background context without an explicit tool call:
 
-### Step 4: Cursor keyboard shortcuts for this project
+\`\`\`
+portfolio://summary — current holdings, allocations, total value
+portfolio://performance — YTD return %, absolute gain/loss, current value
+portfolio://health — health score (0-100), letter grade, action items
+\`\`\`
 
-| Shortcut      | Use                                    |
-| ------------- | -------------------------------------- |
-| `Cmd+K`       | Inline code generation / edit          |
-| `Cmd+L`       | Open chat for longer context questions |
-| `Cmd+Shift+L` | Add current file to chat context       |
-| `@filename`   | Reference a specific file in chat      |
-| `@codebase`   | Search across the whole project        |
+---
 
-### Step 5: Useful Cursor prompts for this project
+## Eval Suite
 
-**Scaffold a new tool:**
+The agent ships with **60+ evaluation tests** across 5 files (zero real network calls — all mocked
+with `respx`), plus a LangSmith experiment suite.
 
-```
-@agent/tools/portfolio.py Create a new tool file for [feature].
-Follow the exact same structure: async private function, sync @tool wrapper,
-asyncio.run(), error handling returning {"status": "error"}, data_timestamp.
-```
+### Eval files
 
-**Fix a failing test:**
+| File                                                                       | Focus                                                                                      | Tests |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----- |
+| [`tests/eval/test_correctness.py`](./tests/eval/test_correctness.py)       | Arithmetic accuracy, percentage conversions, sort order, fee sums, sector rollup           | 12    |
+| [`tests/eval/test_tool_selection.py`](./tests/eval/test_tool_selection.py) | Tool docstring trigger coverage, domain boundary isolation, parameter mapping              | 10    |
+| [`tests/eval/test_tool_execution.py`](./tests/eval/test_tool_execution.py) | Advanced tool execution: happy path, error cases, edge inputs for all 6 advanced tools     | 16    |
+| [`tests/eval/test_multi_step.py`](./tests/eval/test_multi_step.py)         | Cross-tool consistency, referential integrity, multi-session proactive monitor             | 12    |
+| [`tests/eval/test_edge_cases.py`](./tests/eval/test_edge_cases.py)         | Dict/list format switching, zero-value holdings, unicode, large portfolios, invalid inputs | 10    |
+| [`tests/eval/ls_evals.py`](./tests/eval/ls_evals.py)                       | LangSmith tracked experiments: correctness, safety, latency, consistency, tool-keywords    | 23    |
 
-```
-@tests/unit/tools/test_tools.py This test is failing: [paste error].
-Fix the implementation without changing the test.
-```
+### Running the eval suite
 
-**Add a verification check:**
+\`\`\`bash
 
-```
-@agent/verification/__init__.py Add check number 6: [describe the check].
-Must follow the signature: (response: str, tool_results: list[dict]) -> tuple[str, list[VerificationFlag]]
-Add to run_verification_pipeline() and write the unit tests.
-```
+# All evals (fast, ~5-10 s, no network required)
+
+pytest tests/eval/ -v
+
+# Specific eval files
+
+pytest tests/eval/test_correctness.py -v
+pytest tests/eval/test_tool_execution.py -v
+pytest tests/eval/test_multi_step.py -v
+
+# Unit tests
+
+pytest tests/unit/ -v
+
+# Adversarial / safety tests
+
+pytest tests/adversarial/ -v
+
+# With coverage report
+
+pytest tests/unit/ tests/eval/ --cov=agent --cov-report=term-missing
+\`\`\`
+
+### LangSmith experiments (`ls_evals.py`)
+
+`ls_evals.py` runs 5 scored eval types tracked in the LangSmith UI:
+
+| Eval type       | What it tests                                                           | Examples |
+| --------------- | ----------------------------------------------------------------------- | -------- |
+| `correctness`   | Tool output matches numeric ground truth (totals, %, fee sums, sectors) | 6        |
+| `safety`        | Verification pipeline catches disclaimer, hallucination, concentration  | 5        |
+| `latency`       | Tool calls complete within 2 s on mocked I/O                            | 4        |
+| `consistency`   | Same inputs → identical outputs across two runs                         | 3        |
+| `tool-keywords` | Tool docstrings contain all LLM trigger keywords                        | 5        |
+
+\`\`\`bash
+
+# Prerequisites: LANGCHAIN_API_KEY must be set in .env
+
+python tests/eval/ls_evals.py # all 5 eval types
+python tests/eval/ls_evals.py --only safety # one type
+python tests/eval/ls_evals.py --only latency
+python tests/eval/ls_evals.py --prefix feat/my-branch # tag experiment run
+
+# View results at: https://smith.langchain.com → Projects → fortio-evals
+
+\`\`\`
+
+### Evals in CI
+
+Evals run automatically on every PR and push to `main` as part of the `test-agent` CI job.
+They are **advisory** (`continue-on-error: true`) — results are visible in CI without blocking
+deployment. Unit tests are the hard gate.
+
+---
+
+## Verification Pipeline
+
+Every final LLM response passes through a **5-stage verification pipeline**:
+
+| Stage | Check                 | What it does                                                                |
+| ----- | --------------------- | --------------------------------------------------------------------------- |
+| 1     | `check_disclaimer`    | Detects investment-advice language; appends "not financial advice"          |
+| 2     | `check_hallucination` | Extracts numbers from response; flags any not present in tool results       |
+| 3     | `check_freshness`     | Rejects tool results older than `DATA_MAX_AGE_MINUTES` (default: 5 min)     |
+| 4     | `check_concentration` | Flags any position > `PORTFOLIO_CONCENTRATION_THRESHOLD` (default: 20%)     |
+| 5     | `check_confidence`    | Scores response HIGH/MEDIUM/LOW; escalates on HIGH severity + hallucination |
+
+Flags are returned in the API response and surfaced as `⚠️ Flags detected` in the chat UI.
+
+---
+
+## Project Structure
+
+\`\`\`
+apps/agent/
+├── agent/
+│ ├── config.py # All settings via pydantic-settings
+│ ├── prompts.py # System prompt + persona guardrails
+│ ├── cli.py # Typer CLI: ask / chat / serve / mcp / version
+│ ├── tools/ # 11 LangGraph tools
+│ │ ├── **init**.py # ALL_TOOLS export
+│ │ │ — Core tools (single Ghostfolio API call) —
+│ │ ├── portfolio.py # get_portfolio_summary
+│ │ ├── performance.py # get_performance
+│ │ ├── transactions.py # get_transactions
+│ │ ├── diversification.py # analyze_diversification
+│ │ ├── market.py # get_market_data (Yahoo Finance via yfinance)
+│ │ │ — Advanced multi-step tools —
+│ │ ├── fee_drag.py # get_fee_drag_analysis
+│ │ ├── health_scorecard.py# get_portfolio_health_scorecard
+│ │ ├── rebalancing.py # get_rebalancing_plan
+│ │ ├── market_context.py # get_market_context_overlay
+│ │ ├── transaction_patterns.py # get_transaction_pattern_intelligence
+│ │ └── proactive_monitor.py # get_proactive_risk_monitor
+│ ├── verification/
+│ │ └── **init**.py # 5-stage pipeline
+│ ├── mcp/
+│ │ └── server.py # MCP server: 11 tools + 3 resources + 1 prompt
+│ ├── graph/
+│ │ ├── state.py # AgentState TypedDict
+│ │ └── graph.py # LangGraph assembly + routing
+│ ├── clients/
+│ │ ├── ghostfolio.py # Typed async Ghostfolio API client
+│ │ └── market.py # yfinance async client (source: Yahoo Finance)
+│ └── api/
+│ ├── main.py # FastAPI app + /health + /api/chat
+│ └── schemas.py # Request/response Pydantic models
+│
+├── tests/
+│ ├── conftest.py
+│ ├── unit/ # Fast mocked unit tests (hard gate in CI)
+│ │ ├── tools/
+│ │ ├── clients/
+│ │ ├── graph/
+│ │ ├── api/
+│ │ └── verification/
+│ ├── eval/ # Eval suite (advisory in CI)
+│ │ ├── test_correctness.py
+│ │ ├── test_tool_selection.py
+│ │ ├── test_tool_execution.py
+│ │ ├── test_multi_step.py
+│ │ ├── test_edge_cases.py
+│ │ └── ls_evals.py # LangSmith experiment runner
+│ ├── integration/
+│ └── adversarial/
+│
+├── docker/
+│ └── docker-compose.yml # Ghostfolio + PostgreSQL + Redis
+├── Dockerfile
+├── railway.toml
+├── pyproject.toml # Package metadata (fortio-agent on PyPI)
+├── .env.example
+├── requirements.txt
+├── requirements-dev.txt
+└── pytest.ini
+\`\`\`
+
+---
+
+## LangSmith Observability Setup
+
+1. Create free account at smith.langchain.com
+2. Create a project called `fortio-agent`
+3. Copy your API key to `.env` as `LANGCHAIN_API_KEY`
+4. Set `LANGCHAIN_TRACING_V2=true`
+5. Run the agent — traces appear automatically in your LangSmith dashboard
+
+---
+
+## Running the Full Docker Stack
+
+\`\`\`bash
+
+# From monorepo root
+
+docker compose -f docker/docker-compose.yml up -d
+
+# Ghostfolio UI → http://localhost:3333
+
+# Agent FastAPI docs → http://localhost:8001/docs
+
+\`\`\`
 
 ---
 
@@ -312,102 +491,9 @@ Add to run_verification_pipeline() and write the unit tests.
 | Cost                         | ~$3/1M tokens                      | ~$5/1M tokens                   |
 | Structured output            | ✅ Native                          | ✅ Native                       |
 
-The larger context window matters when you're passing full portfolio data (can be large) plus conversation history plus tool results all in the same prompt.
+The larger context window matters when passing full portfolio data + conversation history
 
----
-
-## Running the Full Docker Stack
-
-```bash
-# From monorepo root
-docker compose -f docker/docker-compose.yml up -d
-
-# Ghostfolio UI → http://localhost:3333
-# Agent FastAPI docs → http://localhost:8001/docs
-```
-
----
-
-## Project Structure
-
-```
-apps/agent/
-├── agent/
-│   ├── config.py              # All settings via pydantic-settings
-│   ├── prompts.py             # System prompt
-│   ├── cli.py                 # Typer CLI (fortio ask / chat / serve / version)
-│   ├── tools/                 # 11 LangGraph tools
-│   │   ├── __init__.py        # ALL_TOOLS export
-│   │   │   — Core tools (single Ghostfolio API call) —
-│   │   ├── portfolio.py       # get_portfolio_summary
-│   │   ├── performance.py     # get_performance
-│   │   ├── transactions.py    # get_transactions
-│   │   ├── diversification.py # analyze_diversification
-│   │   ├── market.py          # get_market_data
-│   │   │   — Advanced multi-step tools —
-│   │   ├── fee_drag.py        # get_fee_drag_analysis
-│   │   ├── health_scorecard.py# get_portfolio_health_scorecard
-│   │   ├── rebalancing.py     # get_rebalancing_plan
-│   │   ├── market_context.py  # get_market_context_overlay
-│   │   ├── transaction_patterns.py # get_transaction_pattern_intelligence
-│   │   └── proactive_monitor.py    # get_proactive_risk_monitor
-│   ├── verification/
-│   │   └── __init__.py        # All 5 verifiers + pipeline
-│   ├── graph/
-│   │   ├── state.py           # AgentState TypedDict
-│   │   └── graph.py           # LangGraph assembly
-│   ├── clients/
-│   │   ├── ghostfolio.py      # Typed async API client
-│   │   └── market.py          # yfinance client
-│   ├── api/
-│   │   ├── main.py            # FastAPI app + /health + /api/chat
-│   │   └── schemas.py         # Request/response Pydantic models
-
-├── tests/
-│   ├── conftest.py
-│   ├── unit/
-│   │   ├── tools/             # Tool unit tests (mocked with respx)
-│   │   └── verification/      # Verifier unit tests
-│   ├── eval/
-│   │   ├── test_correctness.py   # 12 arithmetic/structure accuracy tests
-│   │   ├── test_tool_selection.py# 10 docstring coverage + domain boundary tests
-│   │   └── test_edge_cases.py    # 10 edge case / resilience tests
-│   ├── integration/
-│   └── adversarial/
-├── Dockerfile
-├── railway.toml
-├── .env.example
-├── requirements.txt
-├── requirements-dev.txt
-└── pytest.ini
-```
-
----
-
-## Eval Suite
-
-The agent ships with 32 evaluation tests (zero real network calls — all mocked with `respx`):
-
-| File                                                                       | Focus                                                                                                              | Tests |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ----- |
-| [`tests/eval/test_correctness.py`](./tests/eval/test_correctness.py)       | Arithmetic accuracy, percentage conversions, sort order, fee sums, sector rollup                                   | 12    |
-| [`tests/eval/test_tool_selection.py`](./tests/eval/test_tool_selection.py) | Tool docstring trigger coverage, domain boundary isolation, parameter mapping                                      | 10    |
-| [`tests/eval/test_edge_cases.py`](./tests/eval/test_edge_cases.py)         | Dict vs list holdings format, zero-value holdings, missing fields, unicode names, large portfolios, invalid inputs | 10    |
-
-```bash
-pytest tests/eval/ -v               # run all evals
-pytest tests/eval/test_correctness.py -v   # run one file
-```
-
----
-
-## LangSmith Observability Setup
-
-1. Create free account at smith.langchain.com
-2. Create a project called `fortio-agent`
-3. Copy your API key to `.env` as `LANGCHAIN_API_KEY`
-4. Set `LANGCHAIN_TRACING_V2=true`
-5. Run the agent — traces appear automatically in your LangSmith dashboard
+- tool results in the same prompt.
 
 ---
 
@@ -415,8 +501,9 @@ pytest tests/eval/test_correctness.py -v   # run one file
 
 This agent is published as `fortio-agent` on PyPI:
 
-```bash
+\`\`\`bash
 pip install fortio-agent
-```
+\`\`\`
 
-See [PyPI page](https://pypi.org/project/fortio-agent/) for usage docs.
+- PyPI: [pypi.org/project/fortio-agent](https://pypi.org/project/fortio-agent/)
+- Source: [github.com/meghamegs-lab/agentForge](https://github.com/meghamegs-lab/agentForge)
