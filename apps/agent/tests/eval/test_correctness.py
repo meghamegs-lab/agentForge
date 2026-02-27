@@ -161,18 +161,19 @@ async def test_holdings_sorted_largest_value_first():
 @respx.mock
 async def test_performance_raw_fraction_converted_to_percentage():
     """
-    Ghostfolio returns relativeChange as a raw fraction (e.g. 0.1234 = 12.34 %).
+    Ghostfolio v2 returns a FLAT performance object with netPerformancePercentage
+    as a raw decimal (e.g. 0.1234 = 12.34 %).
     The tool must multiply by 100 and round to 2 decimal places.
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
         return_value=httpx.Response(200, json={
             "performance": {
-                "ytd": {
-                    "relativeChange": 0.1234,
-                    "absoluteChange": 987.65,
-                    "currentValue": 8987.65,
-                }
+                "netPerformancePercentage": 0.1234,   # flat v2 format
+                "netPerformance": 987.65,
+                "currentValueInBaseCurrency": 8987.65,
+                "totalInvestment": 8000.00,
+                "currentNetWorth": 8987.65,
             }
         })
     )
@@ -192,16 +193,17 @@ async def test_performance_negative_returns_preserved():
     """
     A loss of -8.5 % must be stored as -8.5, not 0 or positive.
     Absolute change should also be negative.
+    Uses flat v2 API format (netPerformancePercentage / netPerformance).
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
         return_value=httpx.Response(200, json={
             "performance": {
-                "ytd": {
-                    "relativeChange": -0.085,
-                    "absoluteChange": -750.00,
-                    "currentValue": 8150.00,
-                }
+                "netPerformancePercentage": -0.085,   # flat v2 format
+                "netPerformance": -750.00,
+                "currentValueInBaseCurrency": 8150.00,
+                "totalInvestment": 8900.00,
+                "currentNetWorth": 8150.00,
             }
         })
     )
@@ -380,10 +382,11 @@ async def test_diversification_score_penalises_concentration():
 # Correctness 12 — Market data: price retrieved to full precision
 # ══════════════════════════════════════════════════════════════════════════════
 
-def test_market_data_price_precision():
+async def test_market_data_price_precision():
     """
     yfinance returns 175.32; the tool must store it exactly to 2 dp — not
     round to 175 or inflate to 175.999.
+    Uses ainvoke because get_market_data is an async tool.
     """
     mock_ticker = MagicMock()
     mock_ticker.fast_info.currency = "USD"
@@ -394,7 +397,7 @@ def test_market_data_price_precision():
         index=pd.date_range("2024-01-01", periods=1)
     )
     with patch("yfinance.Ticker", return_value=mock_ticker):
-        result = get_market_data.invoke({"symbols": "AAPL"})
+        result = await get_market_data.ainvoke({"symbols": "AAPL"})
     assert result["status"] == "ok"
     assert abs(result["current_price"] - 175.32) < 0.001, (
         f"Price should be 175.32, got {result['current_price']}"

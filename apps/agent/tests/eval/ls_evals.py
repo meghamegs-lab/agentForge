@@ -211,12 +211,13 @@ _CORRECTNESS_EXAMPLES: list[dict] = [
             "tool": "performance",
             "date_range": "ytd",
             "api_response": {
+                # Flat v2 API format — no nested period keys
                 "performance": {
-                    "ytd": {
-                        "relativeChange": 0.1234,
-                        "absoluteChange": 987.65,
-                        "currentValue": 8987.65,
-                    }
+                    "netPerformancePercentage": 0.1234,
+                    "netPerformance": 987.65,
+                    "currentValueInBaseCurrency": 8987.65,
+                    "totalInvestment": 8000.00,
+                    "currentNetWorth": 8987.65,
                 }
             },
         },
@@ -229,12 +230,13 @@ _CORRECTNESS_EXAMPLES: list[dict] = [
             "tool": "performance",
             "date_range": "ytd",
             "api_response": {
+                # Flat v2 API format — no nested period keys
                 "performance": {
-                    "ytd": {
-                        "relativeChange": -0.085,
-                        "absoluteChange": -750.00,
-                        "currentValue": 8150.00,
-                    }
+                    "netPerformancePercentage": -0.085,
+                    "netPerformance": -750.00,
+                    "currentValueInBaseCurrency": 8150.00,
+                    "totalInvestment": 8900.00,
+                    "currentNetWorth": 8150.00,
                 }
             },
         },
@@ -565,12 +567,13 @@ _LATENCY_EXAMPLES: list[dict] = [
             "tool": "performance",
             "date_range": "ytd",
             "api_response": {
+                # Flat v2 API format
                 "performance": {
-                    "ytd": {
-                        "relativeChange": 0.12,
-                        "absoluteChange": 900.0,
-                        "currentValue": 8900.0,
-                    }
+                    "netPerformancePercentage": 0.12,
+                    "netPerformance": 900.0,
+                    "currentValueInBaseCurrency": 8900.0,
+                    "totalInvestment": 8000.0,
+                    "currentNetWorth": 8900.0,
                 }
             },
             "max_seconds": 2.0,
@@ -717,12 +720,13 @@ _CONSISTENCY_EXAMPLES: list[dict] = [
             "tool": "performance",
             "date_range": "ytd",
             "api_response": {
+                # Flat v2 API format
                 "performance": {
-                    "ytd": {
-                        "relativeChange": 0.12,
-                        "absoluteChange": 900.0,
-                        "currentValue": 8900.0,
-                    }
+                    "netPerformancePercentage": 0.12,
+                    "netPerformance": 900.0,
+                    "currentValueInBaseCurrency": 8900.0,
+                    "totalInvestment": 8000.0,
+                    "currentNetWorth": 8900.0,
                 }
             },
         },
