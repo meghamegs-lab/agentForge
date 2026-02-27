@@ -3,7 +3,6 @@
  - Floating button (bottom-right) toggles the chat panel
  - Chat panel shows conversation history + input
  - 💡 Prompt Tips button reveals categorised prompt suggestions
- - 🕐 History button shows past 10 conversations from localStorage
  ============================================================ -->
 
 <!-- ── Floating Action Button ── -->
@@ -35,16 +34,6 @@
 
       <!-- Header action buttons -->
       <div class="gf-ai-chat-header-actions">
-        <button
-          class="header-action-btn"
-          [class.header-action-btn-active]="isHistoryOpen"
-          [matTooltip]="
-            isHistoryOpen ? 'Close history' : 'View past conversations'
-          "
-          (click)="toggleHistory()"
-        >
-          🕐
-        </button>
         <button
           class="header-action-btn"
           matTooltip="Start a new conversation"
@@ -181,44 +170,6 @@
         </div>
       }
     </div>
-
-    <!-- ── History Panel ───────────────────────────────────── -->
-    @if (isHistoryOpen) {
-      <div class="history-panel">
-        <div class="history-header">
-          <span class="history-title">🕐 Past Conversations</span>
-          <span class="history-count">
-            {{ historySnapshots.length }} / {{ MAX_HISTORY }} saved
-          </span>
-        </div>
-        <div class="history-body">
-          @if (historySnapshots.length === 0) {
-            <div class="history-empty">
-              No past conversations yet.<br />
-              Start chatting and they'll appear here.
-            </div>
-          }
-          @for (snapshot of historySnapshots; track snapshot.id) {
-            <div class="history-item" (click)="resumeConversation(snapshot)">
-              <div class="history-item-title">{{ snapshot.title }}</div>
-              <div class="history-item-meta">
-                <span class="history-item-date">{{
-                  formatSnapshotDate(snapshot.savedAt)
-                }}</span>
-                <button
-                  class="history-item-delete"
-                  matTooltip="Delete this conversation"
-                  (click)="deleteSnapshot(snapshot.id, $event)"
-                >
-                  🗑
-                </button>
-              </div>
-            </div>
-          }
-        </div>
-      </div>
-    }
-    <!-- ── End History Panel ────────────────────────────────── -->
 
     <!-- ── Prompt Tips Panel ────────────────────────────────── -->
     @if (isPromptTipsOpen) {
