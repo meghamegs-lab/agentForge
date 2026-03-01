@@ -1,7 +1,7 @@
 """
 evals/test_tool_selection.py — Tool Selection Eval Suite (v2)
 ====================================================================
-Eval IDs: TS01–TS06
+Eval IDs: TS01–TS07
 
 "Does the agent choose the RIGHT tool(s) for each query?"
 
@@ -24,6 +24,7 @@ Tests:
   TS04 — "Compare to SPY over 1Y" → get_performance("1y") + get_market_data("SPY")
   TS05 — "Do I hold any AI stocks?" → get_portfolio_summary()
   TS06 — "How healthy is my portfolio?" → get_portfolio_health_scorecard()
+  TS07 — "How's the market today?" → get_market_data("SPY,QQQ,^DJI")
 
 All tests are pure Python — no network calls, no LLM required.
 """
@@ -277,3 +278,62 @@ class TestTS06_HealthQueryUsesScorecard:
                 f"TS06: Tool '{getattr(tool_fn, 'name', str(tool_fn))}' has an empty description. "
                 f"This will prevent correct tool selection."
             )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TS07 — "How's the market today?" → get_market_data("SPY,QQQ,^DJI")
+#         Verify: get_market_data docstring covers general market overview queries
+#         and references the three benchmark tickers.
+#         Verify: system prompt includes routing rule for generic market questions.
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestTS07_GeneralMarketQueryUsesBenchmarks:
+    def test_market_data_docstring_covers_general_market_keywords(self):
+        """
+        get_market_data docstring must mention 'general', 'overview', or 'market'
+        so the LLM routes "how's the market today?" here instead of answering
+        from training knowledge.
+        """
+        doc = _doc(get_market_data)
+        assert "general" in doc or "overview" in doc or "how's the market" in doc, (
+            "TS07: get_market_data docstring should mention 'general', 'overview', "
+            "or 'how's the market' to cover generic market overview queries."
+        )
+
+    def test_market_data_docstring_mentions_benchmark_tickers(self):
+        """
+        The docstring must reference SPY, QQQ, and ^DJI (or equivalent) so the
+        LLM knows which symbols to pass for a generic 'market today' question.
+        """
+        doc = _doc(get_market_data)
+        assert "spy" in doc and "qqq" in doc, (
+            "TS07: get_market_data docstring must mention 'SPY' and 'QQQ' as "
+            "default benchmarks for generic market overview queries."
+        )
+
+    def test_system_prompt_routes_market_today_to_benchmarks(self):
+        """
+        The system prompt must contain explicit routing for "how's the market"
+        queries using SPY, QQQ, ^DJI so the LLM does not answer from training data.
+        """
+        from agent.prompts import SYSTEM_PROMPT
+
+        prompt_lower = SYSTEM_PROMPT.lower()
+        assert "spy,qqq" in prompt_lower or "spy, qqq" in prompt_lower, (
+            "TS07: System prompt must include 'SPY,QQQ' routing for general market "
+            "overview queries — otherwise the LLM may answer from training data."
+        )
+
+    def test_system_prompt_includes_market_today_example(self):
+        """
+        The system prompt examples must include "how's the market today?" mapped
+        to get_market_data so the LLM has a concrete routing example to follow.
+        """
+        from agent.prompts import SYSTEM_PROMPT
+
+        prompt_lower = SYSTEM_PROMPT.lower()
+        assert "how's the market today" in prompt_lower or "how is the market" in prompt_lower, (
+            "TS07: System prompt must have an example for 'how's the market today?' "
+            "→ get_market_data('SPY,QQQ,^DJI') to guide the LLM's routing."
+        )

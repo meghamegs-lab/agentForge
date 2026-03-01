@@ -19,6 +19,7 @@ Graph flow reference:
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -61,6 +62,21 @@ def _ai_direct(text: str) -> AIMessage:
     return AIMessage(content=text)
 
 
+@contextmanager
+def _patch_both_llms(mock_llm):
+    """
+    Patch both _llm (synthesis / auto mode) and _llm_force_tools (first-step
+    forced-tool mode) with the same mock.  This is required because the graph
+    uses _llm_force_tools on the first reasoning step of finance-related queries
+    (tool_choice='any'/'required') while _llm is used for subsequent synthesis
+    steps.  Tests must mock both so no real API calls are attempted.
+    """
+    with patch("agent.graph.graph._llm", mock_llm), patch(
+        "agent.graph.graph._llm_force_tools", mock_llm
+    ):
+        yield
+
+
 def _ai_with_tool_call(tool_name: str, args: dict | None = None) -> AIMessage:
     """AIMessage with a tool_call → routes to tools node."""
     return AIMessage(
@@ -92,7 +108,7 @@ class TestDirectResponsePath:
             "Your portfolio contains AAPL, VTI, and MSFT across several sectors."
         )
 
-        with patch("agent.graph.graph._llm", mock_llm):
+        with _patch_both_llms(mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
             result = await graph.ainvoke(_initial_state(), config=_config())
 
@@ -106,7 +122,7 @@ class TestDirectResponsePath:
         mock_llm = AsyncMock()
         mock_llm.ainvoke.return_value = _ai_direct("Your account is set up and ready for trading.")
 
-        with patch("agent.graph.graph._llm", mock_llm):
+        with _patch_both_llms(mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
             result = await graph.ainvoke(_initial_state(), config=_config("t-conf"))
 
@@ -119,7 +135,7 @@ class TestDirectResponsePath:
             "I recommend you rebalance your portfolio toward bonds."
         )
 
-        with patch("agent.graph.graph._llm", mock_llm):
+        with _patch_both_llms(mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
             result = await graph.ainvoke(_initial_state(), config=_config("t-flags"))
 
@@ -131,7 +147,7 @@ class TestDirectResponsePath:
         mock_llm = AsyncMock()
         mock_llm.ainvoke.return_value = _ai_direct("You should buy more VTI to diversify.")
 
-        with patch("agent.graph.graph._llm", mock_llm):
+        with _patch_both_llms(mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
             result = await graph.ainvoke(_initial_state(), config=_config("t-disc"))
 
@@ -141,7 +157,7 @@ class TestDirectResponsePath:
         mock_llm = AsyncMock()
         mock_llm.ainvoke.return_value = _ai_direct("Hello!")
 
-        with patch("agent.graph.graph._llm", mock_llm):
+        with _patch_both_llms(mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
             result = await graph.ainvoke(_initial_state(), config=_config("t-turn"))
 
@@ -164,7 +180,7 @@ class TestEscalationPath:
             "You should sell $1750.00 of AAPL and buy $950.00 of bonds immediately."
         )
 
-        with patch("agent.graph.graph._llm", mock_llm):
+        with _patch_both_llms(mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
             result = await graph.ainvoke(_initial_state(), config=_config("t-esc"))
 
@@ -178,7 +194,7 @@ class TestEscalationPath:
             "Sell $25,000 of tech stocks immediately to avoid a $15,000 loss."
         )
 
-        with patch("agent.graph.graph._llm", mock_llm):
+        with _patch_both_llms(mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
             result = await graph.ainvoke(_initial_state(), config=_config("t-safe"))
 
@@ -190,7 +206,7 @@ class TestEscalationPath:
         mock_llm = AsyncMock()
         mock_llm.ainvoke.return_value = _ai_direct("Your portfolio contains AAPL, VTI, and MSFT.")
 
-        with patch("agent.graph.graph._llm", mock_llm):
+        with _patch_both_llms(mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
             result = await graph.ainvoke(_initial_state(), config=_config("t-nesc"))
 
@@ -239,7 +255,7 @@ class TestToolCallRouting:
             _ai_direct("You hold 10 shares of AAPL worth $1,750."),
         ]
 
-        with patch("agent.graph.graph._llm", mock_llm):
+        with _patch_both_llms(mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
             result = await graph.ainvoke(_initial_state("What do I own?"), config=_config("t-tool"))
 
@@ -267,7 +283,7 @@ class TestToolCallRouting:
             _ai_direct("Your portfolio is empty."),
         ]
 
-        with patch("agent.graph.graph._llm", mock_llm):
+        with _patch_both_llms(mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
             await graph.ainvoke(
                 _initial_state("What is in my portfolio?"),
@@ -293,7 +309,7 @@ class TestMultiTurnConversation:
 
         thread_id = "multi-turn-accumulate"
 
-        with patch("agent.graph.graph._llm", mock_llm):
+        with _patch_both_llms(mock_llm):
             saver = MemorySaver()
             graph = build_graph(checkpointer=saver)
             cfg = _config(thread_id)
@@ -321,7 +337,7 @@ class TestMultiTurnConversation:
         mock_llm = AsyncMock()
         mock_llm.ainvoke.return_value = _ai_direct("Response!")
 
-        with patch("agent.graph.graph._llm", mock_llm):
+        with _patch_both_llms(mock_llm):
             saver = MemorySaver()
             graph = build_graph(checkpointer=saver)
 
@@ -375,7 +391,7 @@ class TestMultiTurnConversation:
             _ai_direct("You hold NVDA."),
         ]
 
-        with respx_mock, patch("agent.graph.graph._llm", mock_llm):
+        with respx_mock, _patch_both_llms(mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
             result = await graph.ainvoke(_initial_state("What do I hold?"), config=_config("t-ctx"))
 
@@ -400,7 +416,7 @@ class TestVerificationAlwaysRuns:
             "AAPL will certainly reach $400 by next year based on current trends."
         )
 
-        with patch("agent.graph.graph._llm", mock_llm):
+        with _patch_both_llms(mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
             result = await graph.ainvoke(
                 _initial_state("Will AAPL go up?"), config=_config("t-lowconf")
@@ -416,7 +432,7 @@ class TestVerificationAlwaysRuns:
         mock_llm = AsyncMock()
         mock_llm.ainvoke.return_value = _ai_direct("Your account has been set up correctly.")
 
-        with patch("agent.graph.graph._llm", mock_llm):
+        with _patch_both_llms(mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
             result = await graph.ainvoke(
                 _initial_state("Is my account OK?"), config=_config("t-hconf")
@@ -431,7 +447,7 @@ class TestVerificationAlwaysRuns:
         mock_llm = AsyncMock()
         mock_llm.ainvoke.return_value = _ai_direct("Hello there!")
 
-        with patch("agent.graph.graph._llm", mock_llm):
+        with _patch_both_llms(mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
             result = await graph.ainvoke(_initial_state("Hi"), config=_config("t-vflags"))
 
