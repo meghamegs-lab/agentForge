@@ -7,6 +7,7 @@ Standout: Returns specific dollar amounts to buy/sell — not just "you're overw
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -112,8 +113,8 @@ async def _rebalancing_plan(
         }
         deltas = {b: targets[b] - buckets.get(b, 0) for b in targets}
 
-        # ── Per-position trades ────────────────────────────────────
-        trades = []
+        # ── Pre-compute trade amounts to decide which symbols need prices ─────
+        candidate_trades: list[dict[str, Any]] = []
         for sym, h in sorted(
             holdings.items(),
             key=lambda x: x[1].get("valueInBaseCurrency", x[1].get("value", 0)) or 0,
@@ -123,26 +124,63 @@ async def _rebalancing_plan(
             bucket = position_buckets[sym]
             alloc_pct = val / total_value * 100
             delta = deltas.get(bucket, 0)
-
-            # Each position contributes proportionally to its bucket's delta
             bucket_total = buckets.get(bucket, 0)
             trade_amount = (delta * val / bucket_total) if bucket_total > 0 else 0
 
             if abs(trade_amount) < 50:  # ignore tiny trades
                 continue
 
-            # Fetch current price for share count estimate
-            price_data = await _market.get_quote(sym)
-            price = price_data.get("current_price") if price_data.get("status") == "ok" else None
-            shares_estimate = round(abs(trade_amount) / price, 2) if price else None
-
-            trades.append(
+            candidate_trades.append(
                 {
                     "symbol": sym,
                     "name": h.get("name", sym),
                     "bucket": bucket,
                     "current_value": round(val, 2),
                     "current_pct": round(alloc_pct, 2),
+                    "trade_amount": trade_amount,
+                }
+            )
+
+        # ── Batch-fetch all prices in parallel (N× speedup vs sequential loop) ─
+        trade_symbols = [t["symbol"] for t in candidate_trades]
+        prices: dict[str, float | None] = {}
+        if trade_symbols:
+            batch_result = await _market.get_batch_quotes(trade_symbols)
+            if batch_result.get("status") == "ok":
+                # get_batch_quotes returns {"status": "ok", "quotes": {sym: quote_dict, ...}}
+                quote_data = batch_result.get("quotes", {})
+                for sym in trade_symbols:
+                    q = quote_data.get(sym, {})
+                    prices[sym] = q.get("current_price") if q.get("status") == "ok" else None
+            else:
+                # Fallback: fetch individually in parallel if batch fails
+                individual_results = await asyncio.gather(
+                    *[_market.get_quote(sym) for sym in trade_symbols],
+                    return_exceptions=True,
+                )
+                for sym, res in zip(trade_symbols, individual_results, strict=False):
+                    if isinstance(res, Exception) or not isinstance(res, dict):
+                        prices[sym] = None
+                    else:
+                        prices[sym] = (
+                            res.get("current_price") if res.get("status") == "ok" else None
+                        )
+
+        # ── Build trades list using pre-fetched prices ─────────────────────────
+        trades: list[dict[str, Any]] = []
+        for t in candidate_trades:
+            sym = t["symbol"]
+            trade_amount = t["trade_amount"]
+            price = prices.get(sym)
+            shares_estimate = round(abs(trade_amount) / price, 2) if price else None
+
+            trades.append(
+                {
+                    "symbol": sym,
+                    "name": t["name"],
+                    "bucket": t["bucket"],
+                    "current_value": t["current_value"],
+                    "current_pct": t["current_pct"],
                     "action": "SELL" if trade_amount < 0 else "BUY",
                     "dollar_amount": round(abs(trade_amount), 2),
                     "shares_estimate": shares_estimate,

@@ -106,11 +106,15 @@ STANDARD_ORDERS = {
     ]
 }
 
+# Ghostfolio v2 flat performance format — one object per range request (no nested period keys).
+# netPerformancePercentage is a decimal fraction: 0.40 = 40%.
 STANDARD_PERF = {
     "performance": {
-        "ytd":  {"relativeChange": 0.10, "absoluteChange": 900.00, "currentValue": 9000.00},
-        "1y":   {"relativeChange": 0.22, "absoluteChange": 1980.00, "currentValue": 9000.00},
-        "max":  {"relativeChange": 0.40, "absoluteChange": 3600.00, "currentValue": 9000.00},
+        "netPerformancePercentage": 0.40,
+        "netPerformance": 3600.00,
+        "currentValueInBaseCurrency": 9000.00,
+        "totalInvestment": 5400.00,
+        "currentNetWorth": 9000.00,
     }
 }
 

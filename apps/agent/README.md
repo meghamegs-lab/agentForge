@@ -5,11 +5,11 @@ by integrating with [Ghostfolio](https://ghostfol.io), the open-source wealth ma
 
 ## Production URLs
 
-| Service               | URL                                                                                                |
-| --------------------- | -------------------------------------------------------------------------------------------------- |
-| **Ghostfolio App**    | [ghostfolio-production.up.railway.app](https://ghostfolio-production.up.railway.app)               |
-| **Fortio Agent API**  | [fortio-agent-production.up.railway.app](https://fortio-agent-production.up.railway.app)           |
-| **Fortio Agent Docs** | [fortio-agent-production.up.railway.app/docs](https://fortio-agent-production.up.railway.app/docs) |
+| Service                                           | URL                                                                                                                                   |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ghostfolio App**                                | [ghostfolio-production.up.railway.app](https://ghostfolio-production-453e.up.railway.app/en/home)                                     |
+| **Ghostfolio Demo Account to test Fortio Agent ** | [fortio-agent-production.up.railway.app](https://ghostfolio-production-453e.up.railway.app/en/p/e6b67d66-b727-4fa8-a3ac-01ec36d5dde1) |
+| **Fortio Agent Docs**                             | [fortio-agent-production.up.railway.app/docs](https://fortio-agent-production.up.railway.app/docs)                                    |
 
 ## Stack
 
@@ -190,6 +190,18 @@ tools + 3 resources + 1 prompt template to Claude Desktop, Cursor, or any MCP-co
 
 See the [MCP section](#mcp--model-context-protocol) below for full setup instructions.
 
+#### `fortio demo` — Run all 11 tools in sequence
+
+\`\`\`bash
+fortio demo
+fortio demo --no-verbose # suppress per-tool detail
+\`\`\`
+
+Runs one targeted question per tool so all 11 tools are exercised end-to-end in a single command.
+Each question is specifically designed to trigger exactly one tool. Prints a summary at the end:
+`Demo complete: 11/11 tools succeeded`. Ideal for verifying a fresh install or demonstrating
+the agent in a recorded session.
+
 #### `fortio version` — Show active configuration
 
 \`\`\`bash
@@ -217,10 +229,11 @@ fortio version
 | ---------------------------- | --------------------------------------- | -------------------------- | ----------- |
 | `fortio ask`                 | Quick one-off queries, scripting        | None                       | None        |
 | `fortio chat`                | Interactive exploration in the terminal | In-memory (session only)   | None        |
+| `fortio demo`                | Verify all 11 tools work end-to-end     | None                       | None        |
 | `fortio serve` + `/api/chat` | Angular/Ghostfolio frontend             | Postgres (across restarts) | Full        |
 | `fortio mcp`                 | Claude Desktop / Cursor integration     | Host-managed               | Host        |
 
-> **Note:** `fortio chat` and `fortio ask` use `MemorySaver` — conversation history is
+> **Note:** `fortio chat`, `fortio ask`, and `fortio demo` use `MemorySaver` — conversation history is
 > kept only for the lifetime of the process and is not persisted to Postgres.
 
 ---
@@ -242,7 +255,7 @@ pasted into a chat box.
 ### Claude Desktop setup
 
 Edit `~/Library/Application Support/Claude/claude_desktop_config.json`
-(Windows: `%APPDATA%/Claude/claude_desktop_config.json`):
+(Windows: `%APPDATA%\Claude\claude_desktop_config.json`):
 
 \`\`\`json
 {
@@ -261,11 +274,16 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 Restart Claude Desktop — the Fortio tools appear in the tool list automatically.
 
+> **Local Ghostfolio?** Use `"GHOSTFOLIO_BASE_URL": "http://localhost:3333"` instead.
+
+> **MCP server not connecting?** Confirm `fortio` is on `PATH` with `which fortio`. If not found, use the full path: `"command": "/path/to/.venv/bin/fortio"`.
+
 ### Cursor setup
 
 1. Open Cursor → **Settings** → **MCP**
 2. Click **Add server**
 3. Paste the same JSON block as above
+4. Restart Cursor — Fortio tools appear in the MCP tool list
 
 ### Using the `portfolio-analysis` prompt template
 
@@ -301,14 +319,16 @@ with `respx`), plus a LangSmith experiment suite.
 
 ### Eval files
 
-| File                                                                       | Focus                                                                                      | Tests |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----- |
-| [`tests/eval/test_correctness.py`](./tests/eval/test_correctness.py)       | Arithmetic accuracy, percentage conversions, sort order, fee sums, sector rollup           | 12    |
-| [`tests/eval/test_tool_selection.py`](./tests/eval/test_tool_selection.py) | Tool docstring trigger coverage, domain boundary isolation, parameter mapping              | 10    |
-| [`tests/eval/test_tool_execution.py`](./tests/eval/test_tool_execution.py) | Advanced tool execution: happy path, error cases, edge inputs for all 6 advanced tools     | 16    |
-| [`tests/eval/test_multi_step.py`](./tests/eval/test_multi_step.py)         | Cross-tool consistency, referential integrity, multi-session proactive monitor             | 12    |
-| [`tests/eval/test_edge_cases.py`](./tests/eval/test_edge_cases.py)         | Dict/list format switching, zero-value holdings, unicode, large portfolios, invalid inputs | 10    |
-| [`tests/eval/ls_evals.py`](./tests/eval/ls_evals.py)                       | LangSmith tracked experiments: correctness, safety, latency, consistency, tool-keywords    | 23    |
+| File                                                                               | Focus                                                                                      | Tests |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----- |
+| [`tests/eval/test_correctness.py`](./tests/eval/test_correctness.py)               | Arithmetic accuracy, percentage conversions, sort order, fee sums, sector rollup           | 12    |
+| [`tests/eval/test_tool_selection.py`](./tests/eval/test_tool_selection.py)         | Tool docstring trigger keywords, domain boundary isolation, parameter mapping              | 10    |
+| [`tests/eval/test_llm_tool_selection.py`](./tests/eval/test_llm_tool_selection.py) | LLM-driven tool selection routing and keyword coverage                                     | 14    |
+| [`tests/eval/test_tool_execution.py`](./tests/eval/test_tool_execution.py)         | Advanced tool execution: happy path, error cases, edge inputs for all 6 advanced tools     | 16    |
+| [`tests/eval/test_multi_step.py`](./tests/eval/test_multi_step.py)                 | Cross-tool consistency, referential integrity, multi-session proactive monitor             | 12    |
+| [`tests/eval/test_edge_cases.py`](./tests/eval/test_edge_cases.py)                 | Dict/list format switching, zero-value holdings, unicode, large portfolios, invalid inputs | 10    |
+| [`tests/eval/test_adversarial.py`](./tests/eval/test_adversarial.py)               | Prompt injection, jailbreaks, off-topic deflection, fabricated number detection            | 12    |
+| [`tests/eval/ls_evals.py`](./tests/eval/ls_evals.py)                               | LangSmith tracked experiments: correctness, safety, latency, consistency, tool-keywords    | 23    |
 
 ### Running the eval suite
 
@@ -321,14 +341,18 @@ pytest tests/eval/ -v
 # Specific eval files
 
 pytest tests/eval/test_correctness.py -v
+pytest tests/eval/test_tool_selection.py -v
+pytest tests/eval/test_llm_tool_selection.py -v
 pytest tests/eval/test_tool_execution.py -v
 pytest tests/eval/test_multi_step.py -v
+pytest tests/eval/test_edge_cases.py -v
+pytest tests/eval/test_adversarial.py -v
 
 # Unit tests
 
 pytest tests/unit/ -v
 
-# Adversarial / safety tests
+# Adversarial / safety tests (standalone suite)
 
 pytest tests/adversarial/ -v
 

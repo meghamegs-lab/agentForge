@@ -7,6 +7,7 @@ Standout: First tool to produce a graded scorecard with specific named action it
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -39,9 +40,27 @@ async def get_portfolio_health_scorecard() -> dict[str, Any]:
 async def _scorecard() -> dict[str, Any]:
     try:
         client = get_shared_client()
-        holdings_data = await client.get_portfolio_holdings()
-        perf_data = await client.get_portfolio_performance("ytd")
-        perf_1y = await client.get_portfolio_performance("1y")
+
+        # ── Parallelise independent API calls (3× speedup) ────────────────────
+        # All three calls are independent — fire them simultaneously.
+        holdings_result, perf_result, perf_1y_result = await asyncio.gather(
+            client.get_portfolio_holdings(),
+            client.get_portfolio_performance("ytd"),
+            client.get_portfolio_performance("1y"),
+            return_exceptions=True,
+        )
+
+        # Surface any fetch-level exceptions as structured errors
+        if isinstance(holdings_result, Exception):
+            return {"status": "error", "error": str(holdings_result)}
+        if isinstance(perf_result, Exception):
+            return {"status": "error", "error": str(perf_result)}
+        if isinstance(perf_1y_result, Exception):
+            return {"status": "error", "error": str(perf_1y_result)}
+
+        holdings_data: dict = holdings_result
+        perf_data: dict = perf_result
+        perf_1y: dict = perf_1y_result
 
         # Normalise: Ghostfolio can return holdings as a list OR a dict keyed by symbol
         raw = holdings_data.get("holdings", {})

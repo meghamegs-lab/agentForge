@@ -148,20 +148,45 @@ response text + tool_results
 
 ### Test Suite Structure
 
-| Suite                    | File                                | Tests  | What it covers                                   |
-| ------------------------ | ----------------------------------- | ------ | ------------------------------------------------ |
-| Unit — API schemas       | `tests/unit/api/`                   | 19     | Pydantic schema validation                       |
-| Unit — Ghostfolio client | `tests/unit/clients/`               | 16     | HTTP mocking, auth, retry                        |
-| Unit — Market client     | `tests/unit/clients/`               | 10     | yfinance mocking, retry, fallback                |
-| Unit — Graph routing     | `tests/unit/graph/`                 | 28     | Routing logic, context extraction                |
-| Unit — Tools             | `tests/unit/tools/`                 | 19     | Tool output shapes, edge cases                   |
-| Unit — Verification      | `tests/unit/verification/`          | 21     | All 5 pipeline stages                            |
-| Eval — Correctness       | `tests/eval/test_correctness.py`    | 9      | Math accuracy (%, sorts, sums)                   |
-| Eval — Edge cases        | `tests/eval/test_edge_cases.py`     | 10     | Unicode, empty portfolio, bad input              |
-| Eval — Multi-step        | `tests/eval/test_multi_step.py`     | 12     | Cross-tool data consistency                      |
-| Eval — Tool execution    | `tests/eval/test_tool_execution.py` | 14     | Full tool runs, no network                       |
-| Eval — Tool selection    | `tests/eval/test_tool_selection.py` | 14     | Descriptor coverage, param mapping               |
-| Eval — **Adversarial**   | `tests/eval/test_adversarial.py`    | **12** | Prompt injection, jailbreaks, fabricated numbers |
+| Suite                     | File                                    | Tests  | What it covers                                         |
+| ------------------------- | --------------------------------------- | ------ | ------------------------------------------------------ |
+| Unit — API schemas        | `tests/unit/api/`                       | 19     | Pydantic schema validation                             |
+| Unit — Ghostfolio client  | `tests/unit/clients/`                   | 16     | HTTP mocking, auth, retry                              |
+| Unit — Market client      | `tests/unit/clients/`                   | 10     | yfinance mocking, retry, fallback                      |
+| Unit — Graph routing      | `tests/unit/graph/`                     | 28     | Routing logic, context extraction                      |
+| Unit — Tools              | `tests/unit/tools/`                     | 19     | Tool output shapes, edge cases                         |
+| Unit — Verification       | `tests/unit/verification/`              | 21     | All 5 pipeline stages                                  |
+| Eval — Correctness        | `tests/eval/test_correctness.py`        | 12     | Math accuracy (%, sorts, sums, sector rollup)          |
+| Eval — Tool selection     | `tests/eval/test_tool_selection.py`     | 10     | Docstring trigger keywords, domain boundary            |
+| Eval — LLM tool selection | `tests/eval/test_llm_tool_selection.py` | 14     | LLM-driven tool routing, keyword coverage              |
+| Eval — Tool execution     | `tests/eval/test_tool_execution.py`     | 16     | Advanced tool happy path + error cases                 |
+| Eval — Multi-step         | `tests/eval/test_multi_step.py`         | 12     | Cross-tool data consistency                            |
+| Eval — Edge cases         | `tests/eval/test_edge_cases.py`         | 10     | Unicode, empty portfolio, bad input                    |
+| Eval — **Adversarial**    | `tests/eval/test_adversarial.py`        | **12** | Prompt injection, jailbreaks, fabricated numbers       |
+| Adversarial (standalone)  | `tests/adversarial/test_adversarial.py` | —      | Safety / off-topic deflection (separate suite)         |
+| LangSmith Experiments     | `tests/eval/ls_evals.py`                | 23     | Correctness, safety, latency, consistency scored evals |
+
+### Running the Eval Suite
+
+```bash
+# All eval tests (fast, ~5–10 s, no network)
+pytest tests/eval/ -v
+
+# Unit tests only
+pytest tests/unit/ -v
+
+# Standalone adversarial / safety tests
+pytest tests/adversarial/ -v
+
+# Full suite with coverage
+pytest tests/unit/ tests/eval/ --cov=agent --cov-report=term-missing
+
+# LangSmith scored experiments (requires LANGCHAIN_API_KEY)
+python tests/eval/ls_evals.py
+python tests/eval/ls_evals.py --only correctness
+python tests/eval/ls_evals.py --only safety
+python tests/eval/ls_evals.py --prefix feat/my-branch
+```
 
 ### Results (as of Feb 27, 2026)
 
@@ -276,16 +301,56 @@ Key commands:
 | `fortio ask "…"`                       | Single question, prints answer, exits                        |
 | `fortio ask "…" --verbose`             | Same, plus which tools were called and confidence level      |
 | `fortio chat`                          | Interactive multi-turn REPL with `/help`, `/tools`, `/clear` |
+| `fortio chat --verbose`                | REPL with verification flags shown after each response       |
 | `fortio chat --conversation-id <uuid>` | Resume a prior in-process session                            |
 | `fortio serve`                         | Start the FastAPI server (`uvicorn` on port 8001)            |
-| `fortio mcp`                           | Start the MCP server (exposes all 11 tools to MCP clients)   |
+| `fortio serve --reload`                | Dev mode with hot-reload                                     |
+| `fortio serve --workers 4`             | Production multi-worker mode                                 |
+| `fortio demo`                          | Run all 11 tools in sequence; prints pass/fail summary       |
+| `fortio mcp`                           | Start the MCP server (exposes all 11 tools via stdio)        |
+| `fortio version`                       | Show active model, environment, and checkpoint backend       |
 
 Inside `fortio chat` the REPL shows a rich panel per response — confidence badge
 (`🟢 HIGH` / `🟡 MEDIUM` / `🔴 LOW`), tool call list, and follow-up suggestions —
 all sourced from the verification pipeline output, not generated by the LLM.
+
+**`fortio demo`** is a one-command diagnostic: it runs one targeted question per tool
+in sequence and prints `Demo complete: 11/11 tools succeeded`. It is the fastest way
+to confirm everything is wired up correctly after a fresh install or environment change.
 
 ### MCP Server
 
 Fortio also exposes itself as a **Model Context Protocol (MCP) server** (`fortio mcp`),
 making all 11 tools consumable by any MCP-compatible client (e.g. Claude Desktop,
 other LLM agents). This is a zero-cost distribution path for the tool implementations.
+
+**What the MCP server exposes:**
+
+| Type          | Count | Details                                                                                     |
+| ------------- | ----- | ------------------------------------------------------------------------------------------- |
+| **Tools**     | 11    | All portfolio, performance, diversification, market, and risk tools                         |
+| **Resources** | 3     | `portfolio://summary` · `portfolio://performance` · `portfolio://health`                    |
+| **Prompts**   | 1     | `portfolio-analysis` with live pre-loaded context; focus: `risk`/`performance`/`fees`/`all` |
+
+**Claude Desktop config** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "fortio": {
+      "command": "fortio",
+      "args": ["mcp"],
+      "env": {
+        "GHOSTFOLIO_BASE_URL": "http://localhost:3333",
+        "GHOSTFOLIO_ACCESS_TOKEN": "your-security-token"
+      }
+    }
+  }
+}
+```
+
+**Cursor:** Settings → MCP → Add server → paste the same JSON block.
+
+The MCP server runs over **stdio** (standard input/output). All human-readable output is
+redirected to stderr so it doesn't corrupt the JSON-RPC wire protocol. The server
+implementation is at `agent/mcp/server.py` and uses the `mcp` Python SDK.

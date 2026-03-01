@@ -97,11 +97,16 @@ ORDERS_DATA = {
     ]
 }
 
+# Ghostfolio v2 flat performance format — one object per range request (no nested period keys).
+# The scorecard fetches ytd + 1y; both return the same mock response below.
+# netPerformancePercentage is a decimal fraction: 0.10 = 10%.
 PERF_DATA = {
     "performance": {
-        "ytd":  {"relativeChange": 0.10, "absoluteChange": 800.00,  "currentValue": 8000.00},
-        "1y":   {"relativeChange": 0.21, "absoluteChange": 1400.00, "currentValue": 8000.00},
-        "max":  {"relativeChange": 0.45, "absoluteChange": 2500.00, "currentValue": 8000.00},
+        "netPerformancePercentage": 0.10,
+        "netPerformance": 800.00,
+        "currentValueInBaseCurrency": 8000.00,
+        "totalInvestment": 7200.00,
+        "currentNetWorth": 8000.00,
     }
 }
 

@@ -230,10 +230,15 @@ async def test_invalid_performance_period_falls_back_to_ytd():
     The tool must default to "ytd" rather than raising an exception.
     """
     _auth()
+    # Ghostfolio v2 flat format — no nested period keys; netPerformancePercentage is a decimal.
     respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
         return_value=httpx.Response(200, json={
             "performance": {
-                "ytd": {"relativeChange": 0.05, "absoluteChange": 400.0, "currentValue": 8400.0},
+                "netPerformancePercentage": 0.05,
+                "netPerformance": 400.0,
+                "currentValueInBaseCurrency": 8400.0,
+                "totalInvestment": 8000.0,
+                "currentNetWorth": 8400.0,
             }
         })
     )

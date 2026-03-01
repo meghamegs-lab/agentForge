@@ -124,6 +124,30 @@ class Settings(BaseSettings):
     market_data_freshness_minutes: int = 15
     max_tool_retries: int = 2
 
+    # ── Optimisation knobs ────────────────────────────────────────────────────
+    # 1. Tool schema compression — strip verbose Args/Returns/Use-this-when sections
+    #    from tool descriptions sent to the LLM. Saves ~40% of the 3,161 tool-schema
+    #    tokens per LLM call. Set to False to restore original verbose descriptions.
+    tool_schema_compression: bool = True
+
+    # 2. Sliding-window history — number of past *turns* (HumanMessage boundaries)
+    #    kept in the context sent to the LLM. Older turns are dropped silently.
+    #    Set to 0 to disable (full history, original behaviour).
+    history_window_turns: int = 6
+
+    # 3. Semantic query cache — Redis-backed exact-match cache for repeated queries.
+    #    Only caches single-turn (fresh-session) queries to avoid stale context.
+    semantic_cache_enabled: bool = True
+    semantic_cache_ttl_seconds: int = 300  # 5 minutes
+
+    # 4. Tool result truncation — cap each ToolMessage at ~N tokens before the
+    #    next LLM call. Uses a 4-chars-per-token heuristic.
+    #    Set to 0 to disable.
+    #    Raised from 300 → 800: 300 tokens (~1 200 chars) was too aggressive —
+    #    fee-drag and health-scorecard results were being silently truncated,
+    #    causing the LLM to see incomplete data and sometimes skip synthesis.
+    max_tool_result_tokens: int = 800
+
     # ── Custom sources: teach pydantic-settings to parse comma-separated lists ─
     # Swaps the default pydantic-settings env/dotenv sources for comma-aware custom variants.
     @classmethod

@@ -138,27 +138,34 @@ pytest tests/unit/graph/ -v           # LangGraph routing
 pytest tests/unit/api/ -v             # FastAPI schemas
 ```
 
-### Eval suite (correctness, tool selection, edge cases, multi-step)
+### Eval suite (correctness, tool selection, edge cases, multi-step, adversarial)
 
 ```bash
 pytest tests/eval/ -v
 ```
 
-All eval tests are mocked with `respx` — no real API calls, no LLM costs.
+All eval tests are mocked — no real API calls, no LLM costs.
 
-| File                     | What it tests                                         | Tests |
-| ------------------------ | ----------------------------------------------------- | ----- |
-| `test_correctness.py`    | Arithmetic accuracy, percentage conversions, fee sums | 12    |
-| `test_tool_selection.py` | Docstring trigger keywords, domain boundary           | 10    |
-| `test_tool_execution.py` | Advanced tool happy path + error cases                | 16    |
-| `test_multi_step.py`     | Cross-tool consistency, referential integrity         | 12    |
-| `test_edge_cases.py`     | Malformed data, unicode, large portfolios             | 10    |
+| File                         | What it tests                                             | Tests |
+| ---------------------------- | --------------------------------------------------------- | ----- |
+| `test_correctness.py`        | Arithmetic accuracy, percentage conversions, fee sums     | 12    |
+| `test_tool_selection.py`     | Docstring trigger keywords, domain boundary isolation     | 10    |
+| `test_llm_tool_selection.py` | LLM-driven tool selection routing and keyword coverage    | 14    |
+| `test_tool_execution.py`     | Advanced tool happy path + error cases                    | 16    |
+| `test_multi_step.py`         | Cross-tool consistency, referential integrity             | 12    |
+| `test_edge_cases.py`         | Malformed data, unicode, large portfolios                 | 10    |
+| `test_adversarial.py`        | Prompt injection, jailbreaks, fabricated number detection | 12    |
 
-### Adversarial tests
+### Adversarial tests (standalone safety suite)
 
 ```bash
 pytest tests/adversarial/ -v           # safety / jailbreak / off-topic
 ```
+
+> **Two adversarial test locations:**
+>
+> - `tests/eval/test_adversarial.py` — adversarial tests that run as part of the eval suite
+> - `tests/adversarial/test_adversarial.py` — standalone adversarial/safety suite (run separately)
 
 ### Coverage report
 
@@ -175,9 +182,14 @@ pytest tests/unit/ tests/eval/ --cov=agent --cov-report=term-missing
 ```bash
 # Single question
 fortio ask "What does my portfolio look like?"
+fortio ask "How concentrated am I in tech?" --verbose   # show tools + confidence
 
 # Interactive multi-turn REPL
 fortio chat
+fortio chat --verbose   # show verification flags after each response
+
+# Run all 11 tools end-to-end (confirms everything is wired up)
+fortio demo
 ```
 
 Inside `fortio chat`:
@@ -187,6 +199,10 @@ Inside `fortio chat`:
 - `/tools` — list all 11 agent tools
 - `/clear` — visual separator
 - `exit` or `q` — end the session
+
+> **`fortio demo`** runs one targeted question per tool in sequence and prints a final
+> summary (`Demo complete: 11/11 tools succeeded`). Use it as a quick smoke test after
+> setup or any environment change.
 
 ### Option B: FastAPI server
 
@@ -261,7 +277,8 @@ Restart Claude Desktop. Fortio tools appear in the tool list automatically.
 
 1. Open Cursor → **Settings** → **MCP**
 2. Click **Add server**
-3. Paste the same JSON block
+3. Paste the same JSON block as the Claude Desktop config above
+4. Restart Cursor — Fortio tools appear in the MCP tool panel automatically
 
 ### Using the `portfolio-analysis` prompt
 
@@ -309,10 +326,29 @@ View results at: https://smith.langchain.com → Projects → **fortio-evals**
 | Ghostfolio UI | http://localhost:3333      | 3333  | `docker compose up ghostfolio` |
 | Agent FastAPI | http://localhost:8001/docs | 8001  | `fortio serve` or Docker       |
 | Agent CLI     | terminal                   | n/a   | `fortio chat`                  |
+| Agent Demo    | terminal                   | n/a   | `fortio demo`                  |
 | MCP server    | stdio (no port)            | n/a   | `fortio mcp`                   |
 | PostgreSQL    | localhost:5432             | 5432  | `docker compose up postgres`   |
 | Redis         | localhost:6379             | 6379  | `docker compose up redis`      |
 | LangSmith     | smith.langchain.com        | cloud | env var only                   |
+
+---
+
+## CLI Commands Reference
+
+| Command                                | What it does                                              |
+| -------------------------------------- | --------------------------------------------------------- |
+| `fortio ask "…"`                       | Single question, prints answer, exits                     |
+| `fortio ask "…" --verbose`             | Same, plus tools called + confidence level                |
+| `fortio chat`                          | Interactive multi-turn REPL                               |
+| `fortio chat --verbose`                | REPL with verification flags shown after each response    |
+| `fortio chat --conversation-id <uuid>` | Resume a prior in-process session                         |
+| `fortio demo`                          | Run all 11 tools in sequence — smoke test for graders     |
+| `fortio serve`                         | Start the FastAPI server on port 8001                     |
+| `fortio serve --reload`                | Dev mode with hot-reload                                  |
+| `fortio serve --workers 4`             | Production multi-worker mode                              |
+| `fortio mcp`                           | Start the MCP server (stdio, for Claude Desktop / Cursor) |
+| `fortio version`                       | Show active model, environment, and checkpoint config     |
 
 ---
 
@@ -322,6 +358,7 @@ View results at: https://smith.langchain.com → Projects → **fortio-evals**
 | ---------------------------- | ----------------------------------- | ------------------- |
 | `fortio ask`                 | Quick one-off queries, scripting    | None (stateless)    |
 | `fortio chat`                | Interactive exploration in terminal | In-memory only      |
+| `fortio demo`                | Verify all 11 tools work            | None                |
 | `fortio serve` + `/api/chat` | Angular/Ghostfolio frontend         | Postgres (full)     |
 | `fortio mcp`                 | Claude Desktop / Cursor integration | Host-managed        |
 
