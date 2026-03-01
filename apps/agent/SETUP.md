@@ -148,13 +148,14 @@ All eval tests are mocked — no real API calls, no LLM costs.
 
 | File                         | What it tests                                             | Tests |
 | ---------------------------- | --------------------------------------------------------- | ----- |
-| `test_correctness.py`        | Arithmetic accuracy, percentage conversions, fee sums     | 12    |
-| `test_tool_selection.py`     | Docstring trigger keywords, domain boundary isolation     | 10    |
-| `test_llm_tool_selection.py` | LLM-driven tool selection routing and keyword coverage    | 14    |
-| `test_tool_execution.py`     | Advanced tool happy path + error cases                    | 16    |
-| `test_multi_step.py`         | Cross-tool consistency, referential integrity             | 12    |
-| `test_edge_cases.py`         | Malformed data, unicode, large portfolios                 | 10    |
-| `test_adversarial.py`        | Prompt injection, jailbreaks, fabricated number detection | 12    |
+| `test_correctness.py`        | Arithmetic accuracy, percentage conversions, fee sums     | 11    |
+| `test_tool_selection.py`     | Docstring trigger keywords, domain boundary isolation     | 28    |
+| `test_llm_tool_selection.py` | LLM-driven tool selection routing and keyword coverage    | 16    |
+| `test_tool_execution.py`     | Advanced tool happy path + error cases                    | 12    |
+| `test_multi_step.py`         | Cross-tool consistency, referential integrity             | 19    |
+| `test_edge_cases.py`         | Malformed data, unicode, large portfolios                 | 28    |
+| `test_adversarial.py`        | Prompt injection, jailbreaks, fabricated number detection | 29    |
+| `test_safety.py`             | Verification pipeline: disclaimer, hallucination, scoring | 19    |
 
 ### Adversarial tests (standalone safety suite)
 

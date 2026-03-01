@@ -13,11 +13,11 @@ by integrating with [Ghostfolio](https://ghostfol.io), the open-source wealth ma
 
 ## Stack
 
-- **Agent:** LangGraph (state machine) + Claude Sonnet (primary LLM) + GPT-4o (fallback)
+- **Agent:** LangGraph (state machine) + Claude Haiku (primary LLM) + GPT-4o-mini (fallback)
 - **Tools:** 11 domain tools — 5 core (Ghostfolio REST API) + 6 advanced multi-step
 - **Verification:** 5-stage pipeline (disclaimer, hallucination guard, freshness, concentration, confidence)
 - **Interfaces:** FastAPI REST API · Typer CLI (`fortio`) · MCP server (`fortio mcp`)
-- **Observability:** LangSmith tracing + structured eval suite (60+ tests)
+- **Observability:** LangSmith tracing + structured eval suite (280+ tests)
 - **Deployment:** Railway (CI/CD via GitHub Actions)
 
 ---
@@ -314,20 +314,21 @@ portfolio://health — health score (0-100), letter grade, action items
 
 ## Eval Suite
 
-The agent ships with **60+ evaluation tests** across 5 files (zero real network calls — all mocked
+The agent ships with **280+ evaluation tests** across 8 files (zero real network calls — all mocked
 with `respx`), plus a LangSmith experiment suite.
 
 ### Eval files
 
 | File                                                                                 | Focus                                                                                      | Tests |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ----- |
-| [`tests/evals/test_correctness.py`](./tests/evals/test_correctness.py)               | Arithmetic accuracy, percentage conversions, sort order, fee sums, sector rollup           | 12    |
-| [`tests/evals/test_tool_selection.py`](./tests/evals/test_tool_selection.py)         | Tool docstring trigger keywords, domain boundary isolation, parameter mapping              | 10    |
-| [`tests/evals/test_llm_tool_selection.py`](./tests/evals/test_llm_tool_selection.py) | LLM-driven tool selection routing and keyword coverage                                     | 14    |
-| [`tests/evals/test_tool_execution.py`](./tests/evals/test_tool_execution.py)         | Advanced tool execution: happy path, error cases, edge inputs for all 6 advanced tools     | 16    |
-| [`tests/evals/test_multi_step.py`](./tests/evals/test_multi_step.py)                 | Cross-tool consistency, referential integrity, multi-session proactive monitor             | 12    |
-| [`tests/evals/test_edge_cases.py`](./tests/evals/test_edge_cases.py)                 | Dict/list format switching, zero-value holdings, unicode, large portfolios, invalid inputs | 10    |
-| [`tests/evals/test_adversarial.py`](./tests/evals/test_adversarial.py)               | Prompt injection, jailbreaks, off-topic deflection, fabricated number detection            | 12    |
+| [`tests/evals/test_correctness.py`](./tests/evals/test_correctness.py)               | Arithmetic accuracy, percentage conversions, sort order, fee sums, sector rollup           | 11    |
+| [`tests/evals/test_tool_selection.py`](./tests/evals/test_tool_selection.py)         | Tool docstring trigger keywords, domain boundary isolation, parameter mapping              | 28    |
+| [`tests/evals/test_llm_tool_selection.py`](./tests/evals/test_llm_tool_selection.py) | LLM-driven tool selection routing and keyword coverage                                     | 16    |
+| [`tests/evals/test_tool_execution.py`](./tests/evals/test_tool_execution.py)         | Advanced tool execution: happy path, error cases, edge inputs for all 6 advanced tools     | 12    |
+| [`tests/evals/test_multi_step.py`](./tests/evals/test_multi_step.py)                 | Cross-tool consistency, referential integrity, multi-session proactive monitor             | 19    |
+| [`tests/evals/test_edge_cases.py`](./tests/evals/test_edge_cases.py)                 | Dict/list format switching, zero-value holdings, unicode, large portfolios, invalid inputs | 28    |
+| [`tests/evals/test_adversarial.py`](./tests/evals/test_adversarial.py)               | Prompt injection, jailbreaks, off-topic deflection, fabricated number detection            | 29    |
+| [`tests/evals/test_safety.py`](./tests/evals/test_safety.py)                         | Verification pipeline stages: disclaimer, hallucination guard, confidence scoring          | 19    |
 | [`tests/evals/ls_evals.py`](./tests/evals/ls_evals.py)                               | LangSmith tracked experiments: correctness, safety, latency, consistency, tool-keywords    | 23    |
 
 ### Running the eval suite
@@ -347,6 +348,7 @@ pytest tests/evals/test_tool_execution.py -v
 pytest tests/evals/test_multi_step.py -v
 pytest tests/evals/test_edge_cases.py -v
 pytest tests/evals/test_adversarial.py -v
+pytest tests/evals/test_safety.py -v
 
 # Unit tests
 
@@ -455,12 +457,15 @@ apps/agent/
 │ │ ├── graph/
 │ │ ├── api/
 │ │ └── verification/
-│ ├── eval/ # Eval suite (advisory in CI)
+│ ├── evals/ # Eval suite (advisory in CI)
 │ │ ├── test_correctness.py
 │ │ ├── test_tool_selection.py
+│ │ ├── test_llm_tool_selection.py
 │ │ ├── test_tool_execution.py
 │ │ ├── test_multi_step.py
 │ │ ├── test_edge_cases.py
+│ │ ├── test_adversarial.py
+│ │ ├── test_safety.py
 │ │ └── ls_evals.py # LangSmith experiment runner
 │ ├── integration/
 │ └── adversarial/
@@ -506,18 +511,17 @@ docker compose -f docker/docker-compose.yml up -d
 
 ## Why Claude Over GPT-4o for This Project
 
-| Capability                   | Claude Sonnet 4.5                  | GPT-4o                          |
+| Capability                   | Claude Haiku 4.5                   | GPT-4o-mini                     |
 | ---------------------------- | ---------------------------------- | ------------------------------- |
 | Tool use accuracy            | ✅ Better multi-tool chaining      | ✅ Good                         |
 | Financial reasoning          | ✅ Less hallucination on numbers   | ⚠️ Occasionally invents figures |
 | Safety instruction following | ✅ Excellent at "never do X" rules | ✅ Good                         |
 | Context window               | 200k tokens                        | 128k tokens                     |
-| Cost                         | ~$3/1M tokens                      | ~$5/1M tokens                   |
+| Cost                         | ~$0.80/1M tokens (input)           | ~$0.15/1M tokens (input)        |
 | Structured output            | ✅ Native                          | ✅ Native                       |
 
-The larger context window matters when passing full portfolio data + conversation history
-
-- tool results in the same prompt.
+The larger context window matters when passing full portfolio data + conversation history +
+tool results in the same prompt.
 
 ---
 

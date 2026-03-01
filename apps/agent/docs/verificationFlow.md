@@ -245,3 +245,50 @@ HIGH    → Potential hallucination; triggers escalation path in graph
 > `HIGH` flag was raised (currently only `POTENTIAL_HALLUCINATION` when all tools
 > failed). The graph's `should_escalate()` router uses this combined with
 > `should_escalate` state field to decide whether to route to the escalation node.
+
+---
+
+## Conversation History Redaction Guard
+
+The verification pipeline catches hallucinations **after** the LLM responds. The graph
+also has a complementary **pre-LLM** defence in `_redact_prior_tool_messages()` (in
+`agent/graph/graph.py`) that prevents the root cause from occurring in the first place.
+
+### The Problem
+
+In production, the LangGraph checkpointer (Postgres) persists the full message history
+across turns. On turn 2+, the LLM can see `ToolMessage`s from prior turns that contain
+real-looking financial numbers (e.g. `"total_value": 26825.27`). If the LLM answers the
+**current** question by reading those stale numbers from history — instead of calling a
+tool to fetch fresh data — the current turn's `tool_results` list is empty, causing
+`check_hallucination` to correctly fire `POTENTIAL_HALLUCINATION (HIGH)`.
+
+### The Fix
+
+Before every LLM invocation in `reasoning_node`, the message history is passed through
+`_redact_prior_tool_messages()`:
+
+```
+Prior-turn ToolMessages  →  [Stale tool result from a prior turn — call the tool again]
+Current-turn ToolMessages →  left intact (LLM needs these for synthesis)
+HumanMessages / AIMessages → left intact (conversational context preserved)
+```
+
+This forces the LLM to call tools for every new question even in long multi-turn sessions,
+while still letting it reference _who_ it talked to and _what topics_ were discussed.
+
+### Entity context is unaffected
+
+`_extract_context_entities()` runs on the **unmodified** `state["messages"]` before
+redaction, so ticker and sector references extracted from prior tool results (used for
+pronoun resolution like "what about those?") are still available via the dynamic context
+block injected into the system prompt.
+
+### Flag interaction
+
+| Scenario                                   | Pre-LLM guard fires?  | Verification flag raised?                |
+| ------------------------------------------ | --------------------- | ---------------------------------------- |
+| Single-turn query, tools called            | n/a (no history)      | None (numbers match tool results)        |
+| Multi-turn, LLM re-calls tool              | Guard ensures this    | None (fresh data)                        |
+| Multi-turn without guard, LLM reads stale  | Guard not in place    | `POTENTIAL_HALLUCINATION HIGH`           |
+| Multi-turn with guard, LLM skips tool call | Rare; guard nudges it | `POTENTIAL_HALLUCINATION MEDIUM` at most |
