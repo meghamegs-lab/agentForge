@@ -98,7 +98,7 @@ jobs:
           PYTHONPATH: '.'
 
       - name: Eval tests — correctness + tool selection + edge cases (advisory)
-        run: pytest tests/eval/ -v
+        run: pytest tests/evals/ -v
         continue-on-error: true # advisory — results visible in CI but won't block deploy
         env:
           ANTHROPIC_API_KEY: 'test-dummy-key-not-real'
