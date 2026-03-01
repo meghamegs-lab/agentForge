@@ -75,14 +75,75 @@ def check_disclaimer(response: str, tool_results: list[dict]) -> tuple[str, list
 # ─── 2. Hallucination Guard ───────────────────────────────────────────────────
 
 
-# Extracts all numeric values (prices, percentages, dollar amounts) from a text string using regex.
+# Maps common large-number suffixes to their multipliers (longest/most-specific first).
+_SUFFIX_MAP: list[tuple[str, float]] = [
+    (r"(?:trillion|T)(?=\W|$)", 1e12),
+    (r"(?:billion|B)(?=\W|$)", 1e9),
+    (r"(?:million|M)(?=\W|$)", 1e6),
+    (r"(?:thousand|K)(?=\W|$)", 1e3),
+]
+
+
+# Extracts all numeric values from text, normalising large-number suffixes to full integers.
 def _extract_numbers(text: str) -> set[str]:
-    """Extract all numeric values from text (prices, percentages, dollar amounts)."""
-    # Match: $1,234.56 | 12.34% | 1234.56 | 1,234
-    pattern = r"\$?[\d,]+\.?\d*%?"
-    matches = re.findall(pattern, text)
-    # Normalize: remove $ , % for comparison
-    return {re.sub(r"[$,%]", "", m).replace(",", "") for m in matches if len(m) > 1}
+    """
+    Extract all numeric values from text (prices, percentages, dollar amounts).
+
+    Handles suffix notation so LLM-formatted numbers ("$3.88 trillion", "1.5B")
+    are normalised to the same raw integer as the tool-result JSON value
+    ("3880000000000", "1500000000") — preventing false UNSUPPORTED_CLAIM flags
+    when the LLM correctly formats a large number for readability.
+
+    Suffix-matched spans are excluded from the standard number scan so the
+    base value (e.g. "3.88") is not double-counted as a separate number.
+    """
+    results: set[str] = set()
+    suffix_spans: list[tuple[int, int]] = []  # character spans already handled by suffix rules
+
+    for suffix_re, multiplier in _SUFFIX_MAP:
+        pattern = rf"\$?([\d,]+\.?\d*)\s*{suffix_re}"
+        for m in re.finditer(pattern, text, re.IGNORECASE):
+            val_str = m.group(1).replace(",", "")
+            try:
+                full_val = float(val_str) * multiplier
+                results.add(f"{full_val:.0f}")
+                suffix_spans.append(m.span())
+            except ValueError:
+                pass
+
+    # Standard numbers — skip spans already handled by a suffix rule above
+    for m in re.finditer(r"\$?[\d,]+\.?\d*%?", text):
+        if any(start <= m.start() and m.end() <= end for start, end in suffix_spans):
+            continue
+        clean = re.sub(r"[$,%]", "", m.group()).replace(",", "")
+        if len(clean) > 1:
+            results.add(clean)
+
+    return results
+
+
+# Returns True when two numeric strings are within `rel_tol` of each other (default 5 %).
+def _nums_close(a: str, b: str, rel_tol: float = 0.05) -> bool:
+    """
+    Fuzzy-compare two numeric strings.
+
+    Handles rounding that the LLM applies to large numbers (e.g. reporting
+    volume as "171.7M" when the raw value is 171,731,114 — a 0.02 % difference
+    that should NOT trigger an UNSUPPORTED_CLAIM flag).
+
+    A 5 % relative tolerance is intentionally loose enough to absorb
+    reasonable rounding but tight enough to catch a fabricated price
+    (e.g. "$178.50" vs the real "$213.00" — a ~16 % difference).
+    """
+    try:
+        fa, fb = float(a), float(b)
+        if fa == 0 and fb == 0:
+            return True
+        if fa == 0 or fb == 0:
+            return False
+        return abs(fa - fb) / max(abs(fa), abs(fb)) <= rel_tol
+    except ValueError:
+        return False
 
 
 # Flattens all tool result dicts to JSON and extracts every numeric value from them.
@@ -159,7 +220,18 @@ def check_hallucination(
     tool_nums = _extract_numbers_from_tool_results(tool_results)
     response_nums = _extract_numbers(response)
 
-    unsupported = {n for n in response_nums if n not in tool_nums and _looks_financial(n)}
+    # A number is "unsupported" only when it cannot be traced (exactly or within 5 %)
+    # to any value in the tool results.  The fuzzy match absorbs:
+    #   • rounding  ("171.7M" ≈ 171,731,114)
+    #   • precision differences  ("$175.32" from a tool value of "175.32")
+    # while still catching fabricated values that differ by more than 5 %.
+    unsupported = {
+        n
+        for n in response_nums
+        if n not in tool_nums
+        and not any(_nums_close(n, t) for t in tool_nums)
+        and _looks_financial(n)
+    }
 
     if unsupported:
         flags.append(
@@ -406,8 +478,8 @@ def check_confidence(
     """
     Assigns a confidence level (HIGH / MEDIUM / LOW) to the agent's response.
 
-    HIGH: Direct data lookup, single tool call, no predictions
-    MEDIUM: Multi-tool reasoning, some inference
+    HIGH: Tool data present, ≤2 reasoning steps (normal single or parallel lookup), no predictions
+    MEDIUM: Genuine multi-round analysis (3+ reasoning steps) or hedging language
     LOW: Predictive claims, no tool data, or high hallucination risk
 
     Returns (response, flags, confidence_level)
@@ -420,7 +492,14 @@ def check_confidence(
     has_hedging = any(kw in response_lower for kw in HEDGING_KEYWORDS)
     has_speculative = any(kw in response_lower for kw in SPECULATIVE_KEYWORDS)
     has_tool_data = len(tool_results) > 0
-    is_multi_step = reasoning_steps > 1 or len(tool_results) > 1
+    # "Multi-step" means the graph looped back for a second round of tool calls
+    # (3+ reasoning steps).  The normal flow is always 2 steps:
+    #   step 1 — LLM decides which tools to call (may call many in parallel)
+    #   step 2 — LLM synthesises tool results into a final response
+    # Parallel price lookups ("AAPL and MSFT prices") take exactly 2 steps and
+    # should remain HIGH confidence; only genuine multi-round analysis (step 3+)
+    # warrants MEDIUM.
+    is_multi_step = reasoning_steps > 2
 
     if not has_tool_data or has_predictions or has_speculative:
         confidence = "LOW"

@@ -66,6 +66,23 @@ class TestHallucinationGuard:
         # the LLM is presenting training-data guesses as verified facts.
         assert flags[0]["severity"] == "HIGH"
 
+    def test_no_unsupported_claim_for_trillion_formatted_market_cap(self):
+        # LLM says "$3.88 trillion" but tool result has raw integer 3880000000000.
+        # After suffix normalisation both become "3880000000000" → no false flag.
+        tool_results = [
+            {
+                "status": "ok",
+                "symbol": "AAPL",
+                "current_price": 213.5,
+                "market_cap": 3880000000000,
+                "data_timestamp": "2024-01-01T00:00:00Z",
+            }
+        ]
+        response = "Apple's market cap is $3.88 trillion and the price is $213.50."
+        _, flags = check_hallucination(response, tool_results)
+        unsupported = [f for f in flags if f["type"] == "UNSUPPORTED_CLAIM"]
+        assert len(unsupported) == 0
+
     def test_ignores_years_as_financial_numbers(self):
         tool_results = [{"data_timestamp": "2024-01-01T00:00:00Z"}]
         _, flags = check_hallucination("Performance since 2022 has been strong.", tool_results)
@@ -159,9 +176,23 @@ class TestConfidence:
         assert confidence == "HIGH"
 
     def test_medium_confidence_for_multi_tool_chain(self):
+        # 3+ reasoning steps = genuine multi-round analysis → MEDIUM
         tool_results = [{"a": 1}, {"b": 2}]
-        _, flags, confidence = check_confidence("Based on analysis...", tool_results, 2)
+        _, flags, confidence = check_confidence("Based on analysis...", tool_results, 3)
         assert confidence == "MEDIUM"
+
+    def test_high_confidence_for_parallel_price_lookup(self):
+        # Two parallel price lookups (one reasoning round) → still HIGH
+        # This is the "AAPL and MSFT prices" scenario: the LLM calls both tools
+        # simultaneously in step 1, synthesises in step 2 → reasoning_steps = 2
+        tool_results = [
+            {"status": "ok", "symbol": "AAPL", "data_timestamp": "2024-01-01T00:00:00Z"},
+            {"status": "ok", "symbol": "MSFT", "data_timestamp": "2024-01-01T00:00:00Z"},
+        ]
+        _, flags, confidence = check_confidence(
+            "AAPL is $213.50 and MSFT is $420.30.", tool_results, 2
+        )
+        assert confidence == "HIGH"
 
     def test_low_confidence_for_predictions(self):
         _, flags, confidence = check_confidence(
