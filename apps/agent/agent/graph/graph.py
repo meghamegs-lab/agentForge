@@ -144,8 +144,6 @@ def _trim_to_window(messages: list, max_turns: int) -> list:
     # Walk backwards to find the Nth HumanMessage boundary
     human_boundaries: list[int] = []
     for i in range(len(messages) - 1, -1, -1):
-        from langchain_core.messages import HumanMessage  # noqa: PLC0415
-
         if isinstance(messages[i], HumanMessage):
             human_boundaries.append(i)
             if len(human_boundaries) == max_turns:
@@ -156,6 +154,54 @@ def _trim_to_window(messages: list, max_turns: int) -> list:
 
     cutoff = human_boundaries[-1]  # index of the oldest HumanMessage to keep
     return messages[cutoff:]
+
+
+# ── Prior-turn tool data redaction ────────────────────────────────────────────
+
+
+def _redact_prior_tool_messages(messages: list) -> list:
+    """
+    Redact ToolMessage content from all PRIOR turns before sending history
+    to the LLM.
+
+    Why: The LLM reads ToolMessage JSON from previous turns and uses those
+    stale financial numbers to answer current questions — bypassing a fresh
+    tool call. This causes the verification layer to fire POTENTIAL_HALLUCINATION
+    (correctly: the data is unverified for the current turn).
+
+    What we keep:
+      - ToolMessages from the CURRENT turn (after the last HumanMessage) —
+        the LLM needs these for synthesis.
+      - All HumanMessages and AIMessages — conversational context intact.
+
+    What we replace:
+      - ToolMessages from PRIOR turns — replaced with a placeholder that
+        signals "stale, re-fetch required".
+
+    Entity extraction (_extract_context_entities) runs on the unmodified
+    state["messages"] BEFORE this function, so ticker/sector context for
+    pronoun resolution is unaffected.
+    """
+    # Find the start of the current turn (last HumanMessage)
+    last_human_idx = 0
+    for i, msg in enumerate(messages):
+        if isinstance(msg, HumanMessage):
+            last_human_idx = i
+
+    result = []
+    for i, msg in enumerate(messages):
+        if isinstance(msg, ToolMessage) and i < last_human_idx:
+            # Prior-turn tool result: strip the financial data
+            msg = msg.model_copy(
+                update={
+                    "content": (
+                        "[Stale tool result from a prior turn — "
+                        "call the tool again to get current data for this question]"
+                    )
+                }
+            )
+        result.append(msg)
+    return result
 
 
 # ── Tool result truncation helper ─────────────────────────────────────────────
@@ -396,6 +442,13 @@ async def reasoning_node(state: AgentState) -> dict[str, Any]:
     # ── Apply tool result truncation ──────────────────────────────────────────
     # Cap each ToolMessage at ~300 tokens to reduce synthesis-step input cost.
     history = _truncate_tool_messages(history, settings.max_tool_result_tokens)
+
+    # ── Redact prior-turn tool data from LLM context ──────────────────────────
+    # Strips stale financial numbers from previous turns so the LLM is forced
+    # to re-fetch via tool call rather than answering from old data in history.
+    # Current-turn ToolMessages (after the last HumanMessage) are left intact
+    # so the LLM can still synthesise this turn's fresh tool results.
+    history = _redact_prior_tool_messages(history)
 
     messages = [SystemMessage(content=system_content)] + history
     response = await _llm.ainvoke(messages)

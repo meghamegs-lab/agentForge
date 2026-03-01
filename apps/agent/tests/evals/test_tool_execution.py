@@ -1,5 +1,5 @@
 """
-evalsNew/test_tool_execution_v2.py — Tool Execution Eval Suite (v2)
+evals/test_tool_execution.py — Tool Execution Eval Suite (v2)
 ====================================================================
 Eval IDs: TE01–TE07
 
@@ -16,10 +16,10 @@ Tests in this file:
 
 All network calls are mocked with respx — zero real I/O.
 """
+
 from __future__ import annotations
 
 import httpx
-import pytest
 import respx
 
 from agent.config import settings
@@ -41,6 +41,7 @@ def _auth():
 # TE01 — Valid date_range 'ytd' succeeds
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_te01_valid_date_range_ytd_succeeds():
     """
@@ -49,24 +50,32 @@ async def test_te01_valid_date_range_ytd_succeeds():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
-        return_value=httpx.Response(200, json={
-            "performance": {
-                "netPerformancePercentage": 0.0821,
-                "netPerformance": 610.00,
-                "currentValueInBaseCurrency": 8610.00,
-                "totalInvestment": 8000.00,
-                "currentNetWorth": 8610.00,
+        return_value=httpx.Response(
+            200,
+            json={
+                "performance": {
+                    "netPerformancePercentage": 0.0821,
+                    "netPerformance": 610.00,
+                    "currentValueInBaseCurrency": 8610.00,
+                    "totalInvestment": 8000.00,
+                    "currentNetWorth": 8610.00,
+                },
+                "hasErrors": False,
             },
-            "hasErrors": False,
-        })
+        )
     )
     result = await _get_performance("ytd")
 
     assert result["status"] == "ok", f"TE01: Expected ok, got: {result}"
     assert result["requested_period"] == "ytd"
 
-    required_perf_keys = ["relative_change_pct", "absolute_change", "current_value",
-                          "total_investment", "net_worth"]
+    required_perf_keys = [
+        "relative_change_pct",
+        "absolute_change",
+        "current_value",
+        "total_investment",
+        "net_worth",
+    ]
     for key in required_perf_keys:
         assert key in result["performance"], (
             f"TE01: Required performance key '{key}' missing from result"
@@ -85,6 +94,7 @@ async def test_te01_valid_date_range_ytd_succeeds():
 #         Any unrecognised value must be silently coerced to 'ytd'.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_te02_invalid_date_range_falls_back_to_ytd():
     """
@@ -94,15 +104,18 @@ async def test_te02_invalid_date_range_falls_back_to_ytd():
     _auth()
     # The tool will call with ?range=ytd after the fallback
     respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
-        return_value=httpx.Response(200, json={
-            "performance": {
-                "netPerformancePercentage": 0.12,
-                "netPerformance": 960.00,
-                "currentValueInBaseCurrency": 8960.00,
-                "totalInvestment": 8000.00,
-                "currentNetWorth": 8960.00,
-            }
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "performance": {
+                    "netPerformancePercentage": 0.12,
+                    "netPerformance": 960.00,
+                    "currentValueInBaseCurrency": 8960.00,
+                    "totalInvestment": 8000.00,
+                    "currentNetWorth": 8960.00,
+                }
+            },
+        )
     )
     result = await _get_performance("3y")
 
@@ -122,6 +135,7 @@ async def test_te02_invalid_date_range_falls_back_to_ytd():
 #         'January 2024' is NOT ISO 8601. The tool must return {"status": "error"}
 #         or {"status": "empty"} — NOT raise an unhandled exception.
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @respx.mock
 async def test_te03_invalid_date_format_returns_graceful_error():
@@ -149,6 +163,7 @@ async def test_te03_invalid_date_format_returns_graceful_error():
 # TE04 — Empty account_id returns data from ALL accounts
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_te04_empty_account_id_returns_all_accounts():
     """
@@ -157,18 +172,38 @@ async def test_te04_empty_account_id_returns_all_accounts():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/order").mock(
-        return_value=httpx.Response(200, json={
-            "activities": [
-                {"id": "tx-001", "date": "2024-03-15T00:00:00.000Z", "type": "BUY",
-                 "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
-                 "quantity": 10, "unitPrice": 170.00, "fee": 4.99,
-                 "currency": "USD", "account": {"name": "Brokerage A"}},
-                {"id": "tx-002", "date": "2024-06-01T00:00:00.000Z", "type": "BUY",
-                 "SymbolProfile": {"symbol": "VTI", "name": "Vanguard Total Stock Market ETF"},
-                 "quantity": 20, "unitPrice": 210.00, "fee": 0.00,
-                 "currency": "USD", "account": {"name": "Brokerage B"}},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "activities": [
+                    {
+                        "id": "tx-001",
+                        "date": "2024-03-15T00:00:00.000Z",
+                        "type": "BUY",
+                        "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
+                        "quantity": 10,
+                        "unitPrice": 170.00,
+                        "fee": 4.99,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage A"},
+                    },
+                    {
+                        "id": "tx-002",
+                        "date": "2024-06-01T00:00:00.000Z",
+                        "type": "BUY",
+                        "SymbolProfile": {
+                            "symbol": "VTI",
+                            "name": "Vanguard Total Stock Market ETF",
+                        },
+                        "quantity": 20,
+                        "unitPrice": 210.00,
+                        "fee": 0.00,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage B"},
+                    },
+                ]
+            },
+        )
     )
     result = await _get_transactions(account_id="")
 
@@ -188,6 +223,7 @@ async def test_te04_empty_account_id_returns_all_accounts():
 #         The filter must be case-insensitive: 'buy' == 'BUY' == 'Buy'.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_te05_transaction_type_filter_case_insensitive():
     """
@@ -196,18 +232,35 @@ async def test_te05_transaction_type_filter_case_insensitive():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/order").mock(
-        return_value=httpx.Response(200, json={
-            "activities": [
-                {"id": "tx-001", "date": "2024-03-15T00:00:00.000Z", "type": "BUY",
-                 "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
-                 "quantity": 10, "unitPrice": 170.00, "fee": 4.99,
-                 "currency": "USD", "account": {"name": "Brokerage"}},
-                {"id": "tx-003", "date": "2024-09-01T00:00:00.000Z", "type": "DIVIDEND",
-                 "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
-                 "quantity": 10, "unitPrice": 0.25, "fee": 0.00,
-                 "currency": "USD", "account": {"name": "Brokerage"}},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "activities": [
+                    {
+                        "id": "tx-001",
+                        "date": "2024-03-15T00:00:00.000Z",
+                        "type": "BUY",
+                        "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
+                        "quantity": 10,
+                        "unitPrice": 170.00,
+                        "fee": 4.99,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                    {
+                        "id": "tx-003",
+                        "date": "2024-09-01T00:00:00.000Z",
+                        "type": "DIVIDEND",
+                        "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
+                        "quantity": 10,
+                        "unitPrice": 0.25,
+                        "fee": 0.00,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                ]
+            },
+        )
     )
     result = await _get_transactions(transaction_type="buy")  # lowercase intentional
 
@@ -226,16 +279,35 @@ async def test_te05_transaction_type_filter_mixed_case():
     """Also verify 'Buy' (title case) works, not just 'buy' or 'BUY'."""
     _auth()
     respx.get(f"{BASE_URL}/api/v1/order").mock(
-        return_value=httpx.Response(200, json={
-            "activities": [
-                {"id": "tx-s1", "date": "2024-04-01T00:00:00.000Z", "type": "SELL",
-                 "SymbolProfile": {"symbol": "MSFT"}, "quantity": 3, "unitPrice": 400.00,
-                 "fee": 4.99, "currency": "USD", "account": {"name": "Brokerage"}},
-                {"id": "tx-b1", "date": "2024-05-01T00:00:00.000Z", "type": "BUY",
-                 "SymbolProfile": {"symbol": "VTI"}, "quantity": 5, "unitPrice": 210.00,
-                 "fee": 0.00, "currency": "USD", "account": {"name": "Brokerage"}},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "activities": [
+                    {
+                        "id": "tx-s1",
+                        "date": "2024-04-01T00:00:00.000Z",
+                        "type": "SELL",
+                        "SymbolProfile": {"symbol": "MSFT"},
+                        "quantity": 3,
+                        "unitPrice": 400.00,
+                        "fee": 4.99,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                    {
+                        "id": "tx-b1",
+                        "date": "2024-05-01T00:00:00.000Z",
+                        "type": "BUY",
+                        "SymbolProfile": {"symbol": "VTI"},
+                        "quantity": 5,
+                        "unitPrice": 210.00,
+                        "fee": 0.00,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                ]
+            },
+        )
     )
     result = await _get_transactions(transaction_type="Buy")  # title-case
 
@@ -247,6 +319,7 @@ async def test_te05_transaction_type_filter_mixed_case():
 # ══════════════════════════════════════════════════════════════════════════════
 # TE06 — Empty symbols list returns structured error, not crash
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 async def test_te06_empty_symbols_returns_error():
     """
@@ -272,6 +345,7 @@ async def test_te06_empty_symbols_returns_error():
 #         No stack trace, no re-raise.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_te07_ghostfolio_401_returns_structured_error():
     """
@@ -295,9 +369,7 @@ async def test_te07_ghostfolio_401_returns_structured_error():
         f"TE07: Expected status='error' for 401 response, got: {result}"
     )
     # Must NOT contain fabricated holdings
-    assert result.get("holdings", []) == [], (
-        "TE07: On 401, holdings must be empty — not fabricated"
-    )
+    assert result.get("holdings", []) == [], "TE07: On 401, holdings must be empty — not fabricated"
     # Must NOT contain Python traceback text
     result_str = str(result)
     assert "Traceback" not in result_str

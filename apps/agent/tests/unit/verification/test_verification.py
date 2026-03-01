@@ -2,6 +2,7 @@
 Unit tests for all 5 verification checks.
 Pure Python logic — no LLM, no network calls.
 """
+
 from datetime import UTC, datetime, timedelta
 
 from agent.verification import (
@@ -14,6 +15,7 @@ from agent.verification import (
 )
 
 # ── 1. Disclaimer ──────────────────────────────────────────────────────────────
+
 
 class TestDisclaimer:
     def test_appends_disclaimer_when_investment_keywords_present(self):
@@ -80,6 +82,7 @@ class TestDisclaimer:
 
 # ── 2. Hallucination Guard ─────────────────────────────────────────────────────
 
+
 class TestHallucinationGuard:
     def test_passes_when_numbers_present_in_tool_results(self):
         tool_results = [{"current_value": 1750.50, "data_timestamp": "2024-01-01T00:00:00Z"}]
@@ -130,6 +133,7 @@ class TestHallucinationGuard:
 
 # ── 3. Freshness ───────────────────────────────────────────────────────────────
 
+
 class TestFreshness:
     def test_passes_when_timestamp_is_recent(self):
         now = datetime.now(UTC).isoformat()
@@ -156,52 +160,64 @@ class TestFreshness:
 
 # ── 4. Concentration ───────────────────────────────────────────────────────────
 
+
 class TestConcentration:
     def test_flags_position_above_20_percent(self):
-        tool_results = [{
-            "holdings": [
-                {"symbol": "AAPL", "allocation_percent": 45.0, "current_value": 4500},
-                {"symbol": "VTI", "allocation_percent": 55.0, "current_value": 5500},
-            ]
-        }]
+        tool_results = [
+            {
+                "holdings": [
+                    {"symbol": "AAPL", "allocation_percent": 45.0, "current_value": 4500},
+                    {"symbol": "VTI", "allocation_percent": 55.0, "current_value": 5500},
+                ]
+            }
+        ]
         response, flags = check_concentration("Your portfolio summary.", tool_results)
         assert any(f["type"] == "CONCENTRATION_RISK" for f in flags)
         assert "AAPL" in response
 
     def test_no_flag_when_all_positions_below_threshold(self):
-        tool_results = [{
-            "holdings": [
-                {"symbol": "AAPL", "allocation_percent": 15.0, "current_value": 1500},
-                {"symbol": "VTI",  "allocation_percent": 18.0, "current_value": 1800},
-                {"symbol": "MSFT", "allocation_percent": 12.0, "current_value": 1200},
-            ]
-        }]
+        tool_results = [
+            {
+                "holdings": [
+                    {"symbol": "AAPL", "allocation_percent": 15.0, "current_value": 1500},
+                    {"symbol": "VTI", "allocation_percent": 18.0, "current_value": 1800},
+                    {"symbol": "MSFT", "allocation_percent": 12.0, "current_value": 1200},
+                ]
+            }
+        ]
         _, flags = check_concentration("Portfolio summary.", tool_results)
         assert not any(f["type"] == "CONCENTRATION_RISK" for f in flags)
 
     def test_uses_diversification_tool_flags(self):
-        tool_results = [{
-            "concentration_flags": [{
-                "symbol": "TSLA",
-                "severity": "HIGH",
-                "message": "TSLA is 40.0% of your portfolio",
-            }]
-        }]
+        tool_results = [
+            {
+                "concentration_flags": [
+                    {
+                        "symbol": "TSLA",
+                        "severity": "HIGH",
+                        "message": "TSLA is 40.0% of your portfolio",
+                    }
+                ]
+            }
+        ]
         response, flags = check_concentration("Analysis result.", tool_results)
         assert any(f["severity"] == "HIGH" for f in flags)
         assert "TSLA" in response
 
     def test_warning_appended_to_response(self):
-        tool_results = [{
-            "holdings": [
-                {"symbol": "BIG", "allocation_percent": 60.0, "current_value": 6000},
-            ]
-        }]
+        tool_results = [
+            {
+                "holdings": [
+                    {"symbol": "BIG", "allocation_percent": 60.0, "current_value": 6000},
+                ]
+            }
+        ]
         response, _ = check_concentration("Here is your portfolio.", tool_results)
         assert "Concentration Risk" in response
 
 
 # ── 5. Confidence Scoring ──────────────────────────────────────────────────────
+
 
 class TestConfidence:
     def test_high_confidence_for_direct_data_lookup(self):
@@ -229,9 +245,7 @@ class TestConfidence:
         assert confidence == "HIGH"
 
     def test_low_confidence_for_predictions(self):
-        _, flags, confidence = check_confidence(
-            "AAPL will likely reach $200 next year.", [], 1
-        )
+        _, flags, confidence = check_confidence("AAPL will likely reach $200 next year.", [], 1)
         assert confidence == "LOW"
 
     def test_low_confidence_when_no_tool_data(self):
@@ -240,6 +254,7 @@ class TestConfidence:
 
 
 # ── Full Pipeline ──────────────────────────────────────────────────────────────
+
 
 class TestVerificationPipeline:
     def test_pipeline_returns_all_required_fields(self, now_iso):
@@ -253,8 +268,7 @@ class TestVerificationPipeline:
 
     def test_pipeline_adds_disclaimer_for_advice(self, now_iso):
         result = run_verification_pipeline(
-            "You should rebalance your portfolio.",
-            [{"data_timestamp": now_iso}]
+            "You should rebalance your portfolio.", [{"data_timestamp": now_iso}]
         )
         assert "Not financial advice" in result["response"]
 

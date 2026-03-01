@@ -1,5 +1,5 @@
 """
-evalsNew/test_latency.py — Latency Eval Suite (v2)
+evals/test_latency.py — Latency Eval Suite (v2)
 ====================================================
 Eval IDs: L01–L03
 
@@ -20,6 +20,7 @@ To make latency failures BLOCKING, set LATENCY_FAILURES_BLOCKING = True.
 
 All network calls are mocked with respx — zero real I/O.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -56,10 +57,7 @@ def _check_latency(elapsed_ms: float, budget_ms: int, test_id: str) -> None:
     Logs the result either way for reporting.
     """
     status = "OK" if elapsed_ms <= budget_ms else "EXCEEDED"
-    print(
-        f"\n  [{test_id}] Latency: {elapsed_ms:.1f}ms "
-        f"(budget: {budget_ms}ms) — {status}"
-    )
+    print(f"\n  [{test_id}] Latency: {elapsed_ms:.1f}ms (budget: {budget_ms}ms) — {status}")
     if elapsed_ms > budget_ms:
         msg = (
             f"{test_id}: Latency {elapsed_ms:.1f}ms exceeds budget {budget_ms}ms "
@@ -79,6 +77,7 @@ def _check_latency(elapsed_ms: float, budget_ms: int, test_id: str) -> None:
 #        Measures: Python overhead, data processing, mock HTTP round-trip
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_l01_portfolio_summary_within_simple_budget():
     """
@@ -88,16 +87,35 @@ async def test_l01_portfolio_summary_within_simple_budget():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
-        return_value=httpx.Response(200, json={
-            "holdings": [
-                {"symbol": "AAPL", "name": "Apple Inc.", "quantity": 10,
-                 "valueInBaseCurrency": 1750.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "STOCK", "sectors": [], "countries": []},
-                {"symbol": "VTI", "name": "Vanguard Total Stock Market ETF", "quantity": 20,
-                 "valueInBaseCurrency": 4200.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "ETF", "sectors": [], "countries": []},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "holdings": [
+                    {
+                        "symbol": "AAPL",
+                        "name": "Apple Inc.",
+                        "quantity": 10,
+                        "valueInBaseCurrency": 1750.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "VTI",
+                        "name": "Vanguard Total Stock Market ETF",
+                        "quantity": 20,
+                        "valueInBaseCurrency": 4200.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "ETF",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                ]
+            },
+        )
     )
 
     from agent.tools.portfolio import _get_portfolio_summary
@@ -121,15 +139,18 @@ async def test_l01_performance_query_within_simple_budget():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
-        return_value=httpx.Response(200, json={
-            "performance": {
-                "netPerformancePercentage": 0.12,
-                "netPerformance": 960.00,
-                "currentValueInBaseCurrency": 8960.00,
-                "totalInvestment": 8000.00,
-                "currentNetWorth": 8960.00,
-            }
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "performance": {
+                    "netPerformancePercentage": 0.12,
+                    "netPerformance": 960.00,
+                    "currentValueInBaseCurrency": 8960.00,
+                    "totalInvestment": 8000.00,
+                    "currentNetWorth": 8960.00,
+                }
+            },
+        )
     )
 
     from agent.tools.performance import _get_performance
@@ -149,14 +170,24 @@ async def test_l01_transactions_query_within_simple_budget():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/order").mock(
-        return_value=httpx.Response(200, json={
-            "activities": [
-                {"id": "tx-001", "date": "2024-03-15T00:00:00.000Z", "type": "BUY",
-                 "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
-                 "quantity": 10, "unitPrice": 170.00, "fee": 4.99, "currency": "USD",
-                 "account": {"name": "Brokerage"}},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "activities": [
+                    {
+                        "id": "tx-001",
+                        "date": "2024-03-15T00:00:00.000Z",
+                        "type": "BUY",
+                        "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
+                        "quantity": 10,
+                        "unitPrice": 170.00,
+                        "fee": 4.99,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                ]
+            },
+        )
     )
 
     from agent.tools.transactions import _get_transactions
@@ -178,6 +209,7 @@ async def test_l01_transactions_query_within_simple_budget():
 #        All mocked but the Python computation still runs.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_l02_health_scorecard_within_multi_step_budget():
     """
@@ -187,36 +219,63 @@ async def test_l02_health_scorecard_within_multi_step_budget():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
-        return_value=httpx.Response(200, json={
-            "holdings": [
-                {"symbol": "AAPL", "name": "Apple Inc.", "quantity": 10,
-                 "valueInBaseCurrency": 1750.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "STOCK",
-                 "sectors": [{"name": "Technology", "weight": 1.0}],
-                 "countries": [{"name": "United States", "weight": 1.0}]},
-                {"symbol": "VTI", "name": "Vanguard Total Stock Market ETF", "quantity": 20,
-                 "valueInBaseCurrency": 4200.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "ETF",
-                 "sectors": [{"name": "Technology", "weight": 0.30}, {"name": "Other", "weight": 0.70}],
-                 "countries": [{"name": "United States", "weight": 1.0}]},
-                {"symbol": "MSFT", "name": "Microsoft Corporation", "quantity": 5,
-                 "valueInBaseCurrency": 2050.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "STOCK",
-                 "sectors": [{"name": "Technology", "weight": 1.0}],
-                 "countries": [{"name": "United States", "weight": 1.0}]},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "holdings": [
+                    {
+                        "symbol": "AAPL",
+                        "name": "Apple Inc.",
+                        "quantity": 10,
+                        "valueInBaseCurrency": 1750.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [{"name": "Technology", "weight": 1.0}],
+                        "countries": [{"name": "United States", "weight": 1.0}],
+                    },
+                    {
+                        "symbol": "VTI",
+                        "name": "Vanguard Total Stock Market ETF",
+                        "quantity": 20,
+                        "valueInBaseCurrency": 4200.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "ETF",
+                        "sectors": [
+                            {"name": "Technology", "weight": 0.30},
+                            {"name": "Other", "weight": 0.70},
+                        ],
+                        "countries": [{"name": "United States", "weight": 1.0}],
+                    },
+                    {
+                        "symbol": "MSFT",
+                        "name": "Microsoft Corporation",
+                        "quantity": 5,
+                        "valueInBaseCurrency": 2050.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [{"name": "Technology", "weight": 1.0}],
+                        "countries": [{"name": "United States", "weight": 1.0}],
+                    },
+                ]
+            },
+        )
     )
     respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
-        return_value=httpx.Response(200, json={
-            "performance": {
-                "netPerformancePercentage": 0.1234,
-                "netPerformance": 987.65,
-                "currentValueInBaseCurrency": 8987.65,
-                "totalInvestment": 8000.00,
-                "currentNetWorth": 8987.65,
-            }
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "performance": {
+                    "netPerformancePercentage": 0.1234,
+                    "netPerformance": 987.65,
+                    "currentValueInBaseCurrency": 8987.65,
+                    "totalInvestment": 8000.00,
+                    "currentNetWorth": 8987.65,
+                }
+            },
+        )
     )
 
     from agent.tools.health_scorecard import _scorecard
@@ -240,6 +299,7 @@ async def test_l02_health_scorecard_within_multi_step_budget():
 #        Plus: behavioural computation (churn rate, DCA score, pattern detection)
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_l03_transaction_pattern_within_complex_budget():
     """
@@ -249,42 +309,105 @@ async def test_l03_transaction_pattern_within_complex_budget():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/order").mock(
-        return_value=httpx.Response(200, json={
-            "activities": [
-                {"id": "tx-001", "date": "2024-01-10T00:00:00.000Z", "type": "BUY",
-                 "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
-                 "quantity": 10, "unitPrice": 170.00, "fee": 4.99,
-                 "currency": "USD", "account": {"name": "Brokerage"}},
-                {"id": "tx-002", "date": "2024-02-15T00:00:00.000Z", "type": "BUY",
-                 "SymbolProfile": {"symbol": "VTI", "name": "Vanguard Total Stock Market ETF"},
-                 "quantity": 10, "unitPrice": 205.00, "fee": 0.00,
-                 "currency": "USD", "account": {"name": "Brokerage"}},
-                {"id": "tx-003", "date": "2024-03-15T00:00:00.000Z", "type": "BUY",
-                 "SymbolProfile": {"symbol": "VTI", "name": "Vanguard Total Stock Market ETF"},
-                 "quantity": 10, "unitPrice": 208.00, "fee": 0.00,
-                 "currency": "USD", "account": {"name": "Brokerage"}},
-                {"id": "tx-004", "date": "2024-06-01T00:00:00.000Z", "type": "SELL",
-                 "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
-                 "quantity": 5, "unitPrice": 190.00, "fee": 4.99,
-                 "currency": "USD", "account": {"name": "Brokerage"}},
-                {"id": "tx-005", "date": "2024-09-01T00:00:00.000Z", "type": "DIVIDEND",
-                 "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
-                 "quantity": 5, "unitPrice": 0.25, "fee": 0.00,
-                 "currency": "USD", "account": {"name": "Brokerage"}},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "activities": [
+                    {
+                        "id": "tx-001",
+                        "date": "2024-01-10T00:00:00.000Z",
+                        "type": "BUY",
+                        "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
+                        "quantity": 10,
+                        "unitPrice": 170.00,
+                        "fee": 4.99,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                    {
+                        "id": "tx-002",
+                        "date": "2024-02-15T00:00:00.000Z",
+                        "type": "BUY",
+                        "SymbolProfile": {
+                            "symbol": "VTI",
+                            "name": "Vanguard Total Stock Market ETF",
+                        },
+                        "quantity": 10,
+                        "unitPrice": 205.00,
+                        "fee": 0.00,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                    {
+                        "id": "tx-003",
+                        "date": "2024-03-15T00:00:00.000Z",
+                        "type": "BUY",
+                        "SymbolProfile": {
+                            "symbol": "VTI",
+                            "name": "Vanguard Total Stock Market ETF",
+                        },
+                        "quantity": 10,
+                        "unitPrice": 208.00,
+                        "fee": 0.00,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                    {
+                        "id": "tx-004",
+                        "date": "2024-06-01T00:00:00.000Z",
+                        "type": "SELL",
+                        "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
+                        "quantity": 5,
+                        "unitPrice": 190.00,
+                        "fee": 4.99,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                    {
+                        "id": "tx-005",
+                        "date": "2024-09-01T00:00:00.000Z",
+                        "type": "DIVIDEND",
+                        "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
+                        "quantity": 5,
+                        "unitPrice": 0.25,
+                        "fee": 0.00,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                ]
+            },
+        )
     )
     respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
-        return_value=httpx.Response(200, json={
-            "holdings": [
-                {"symbol": "AAPL", "name": "Apple Inc.", "quantity": 5,
-                 "valueInBaseCurrency": 937.50, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "STOCK", "sectors": [], "countries": []},
-                {"symbol": "VTI", "name": "Vanguard Total Stock Market ETF", "quantity": 20,
-                 "valueInBaseCurrency": 4200.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "ETF", "sectors": [], "countries": []},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "holdings": [
+                    {
+                        "symbol": "AAPL",
+                        "name": "Apple Inc.",
+                        "quantity": 5,
+                        "valueInBaseCurrency": 937.50,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "VTI",
+                        "name": "Vanguard Total Stock Market ETF",
+                        "quantity": 20,
+                        "valueInBaseCurrency": 4200.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "ETF",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                ]
+            },
+        )
     )
 
     from agent.tools.transaction_patterns import _transaction_patterns
@@ -306,6 +429,7 @@ async def test_l03_transaction_pattern_within_complex_budget():
 #        Simulates the agent calling multiple tools in parallel (LangGraph nodes).
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_l04_concurrent_tool_calls_no_deadlock():
     """
@@ -315,23 +439,36 @@ async def test_l04_concurrent_tool_calls_no_deadlock():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
-        return_value=httpx.Response(200, json={
-            "holdings": [
-                {"symbol": "AAPL", "valueInBaseCurrency": 1750.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "STOCK", "sectors": [], "countries": []},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "holdings": [
+                    {
+                        "symbol": "AAPL",
+                        "valueInBaseCurrency": 1750.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                ]
+            },
+        )
     )
     respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
-        return_value=httpx.Response(200, json={
-            "performance": {
-                "netPerformancePercentage": 0.12,
-                "netPerformance": 200.00,
-                "currentValueInBaseCurrency": 1750.00,
-                "totalInvestment": 1550.00,
-                "currentNetWorth": 1750.00,
-            }
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "performance": {
+                    "netPerformancePercentage": 0.12,
+                    "netPerformance": 200.00,
+                    "currentValueInBaseCurrency": 1750.00,
+                    "totalInvestment": 1550.00,
+                    "currentNetWorth": 1750.00,
+                }
+            },
+        )
     )
 
     from agent.tools.performance import _get_performance

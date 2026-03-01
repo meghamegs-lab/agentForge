@@ -41,6 +41,7 @@ View results
 ------------
     https://smith.langchain.com  → Projects → fortio-evals
 """
+
 from __future__ import annotations
 
 import argparse
@@ -68,13 +69,14 @@ from agent.verification import (
 
 log = structlog.get_logger()
 
-BASE_URL   = settings.ghostfolio_base_url.rstrip("/")
+BASE_URL = settings.ghostfolio_base_url.rstrip("/")
 _AUTH_RESP = {"authToken": "ls-eval-token-abc"}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Shared Utilities
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def _run(coro: Any) -> Any:
     """Run an async coroutine synchronously (fresh event loop each call)."""
@@ -92,6 +94,7 @@ def _get_ls_client():
     """Return a LangSmith Client or None if the API key is missing."""
     try:
         from langsmith import Client  # noqa: PLC0415
+
         return Client()
     except Exception as exc:
         print(f"⚠  LangSmith client unavailable: {exc}", file=sys.stderr)
@@ -113,10 +116,7 @@ def _upsert_examples(client, dataset_id: str, examples: list[dict]) -> None:
         for ex in client.list_examples(dataset_id=dataset_id)
         if ex.metadata and ex.metadata.get("eval_id")
     }
-    new_examples = [
-        e for e in examples
-        if e.get("metadata", {}).get("eval_id") not in existing_ids
-    ]
+    new_examples = [e for e in examples if e.get("metadata", {}).get("eval_id") not in existing_ids]
     if new_examples:
         client.create_examples(
             inputs=[e["inputs"] for e in new_examples],
@@ -148,9 +148,8 @@ def _avg_score(results, metric_key: str) -> tuple[float, int]:
     try:
         for r in results:
             for er in (r.get("evaluation_results") or {}).get("results", []):
-                if getattr(er, "key", None) == metric_key:
-                    if er.score is not None:
-                        scores.append(float(er.score))
+                if getattr(er, "key", None) == metric_key and er.score is not None:
+                    scores.append(float(er.score))
     except Exception:
         pass
 
@@ -172,15 +171,39 @@ _CORRECTNESS_EXAMPLES: list[dict] = [
             "tool": "portfolio_summary",
             "api_response": {
                 "holdings": [
-                    {"symbol": "AAPL", "name": "Apple",     "quantity": 10, "value": 1750.00,
-                     "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
-                     "sectors": [], "countries": []},
-                    {"symbol": "VTI",  "name": "Vanguard",  "quantity": 20, "value": 4200.00,
-                     "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "ETF",
-                     "sectors": [], "countries": []},
-                    {"symbol": "MSFT", "name": "Microsoft", "quantity": 5,  "value": 2050.00,
-                     "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
-                     "sectors": [], "countries": []},
+                    {
+                        "symbol": "AAPL",
+                        "name": "Apple",
+                        "quantity": 10,
+                        "value": 1750.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "VTI",
+                        "name": "Vanguard",
+                        "quantity": 20,
+                        "value": 4200.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "ETF",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "MSFT",
+                        "name": "Microsoft",
+                        "quantity": 5,
+                        "value": 2050.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
                 ]
             },
         },
@@ -193,12 +216,28 @@ _CORRECTNESS_EXAMPLES: list[dict] = [
             "tool": "portfolio_summary",
             "api_response": {
                 "holdings": [
-                    {"symbol": "AAPL", "name": "Apple",   "quantity": 10, "value": 1000.00,
-                     "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
-                     "sectors": [], "countries": []},
-                    {"symbol": "VTI",  "name": "Vanguard", "quantity": 30, "value": 3000.00,
-                     "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "ETF",
-                     "sectors": [], "countries": []},
+                    {
+                        "symbol": "AAPL",
+                        "name": "Apple",
+                        "quantity": 10,
+                        "value": 1000.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "VTI",
+                        "name": "Vanguard",
+                        "quantity": 30,
+                        "value": 3000.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "ETF",
+                        "sectors": [],
+                        "countries": [],
+                    },
                 ]
             },
         },
@@ -249,18 +288,39 @@ _CORRECTNESS_EXAMPLES: list[dict] = [
             "tool": "transactions",
             "api_response": {
                 "activities": [
-                    {"id": "t1", "date": "2024-01-01T00:00:00Z", "type": "BUY",
-                     "SymbolProfile": {"symbol": "AAPL", "name": "Apple"},
-                     "quantity": 5, "unitPrice": 170.00, "fee": 4.99,
-                     "currency": "USD", "Account": {"name": "Brokerage"}},
-                    {"id": "t2", "date": "2024-02-01T00:00:00Z", "type": "BUY",
-                     "SymbolProfile": {"symbol": "MSFT", "name": "Microsoft"},
-                     "quantity": 2, "unitPrice": 400.00, "fee": 1.50,
-                     "currency": "USD", "Account": {"name": "Brokerage"}},
-                    {"id": "t3", "date": "2024-03-01T00:00:00Z", "type": "DIVIDEND",
-                     "SymbolProfile": {"symbol": "AAPL", "name": "Apple"},
-                     "quantity": 5, "unitPrice": 0.25, "fee": 0.00,
-                     "currency": "USD", "Account": {"name": "Brokerage"}},
+                    {
+                        "id": "t1",
+                        "date": "2024-01-01T00:00:00Z",
+                        "type": "BUY",
+                        "SymbolProfile": {"symbol": "AAPL", "name": "Apple"},
+                        "quantity": 5,
+                        "unitPrice": 170.00,
+                        "fee": 4.99,
+                        "currency": "USD",
+                        "Account": {"name": "Brokerage"},
+                    },
+                    {
+                        "id": "t2",
+                        "date": "2024-02-01T00:00:00Z",
+                        "type": "BUY",
+                        "SymbolProfile": {"symbol": "MSFT", "name": "Microsoft"},
+                        "quantity": 2,
+                        "unitPrice": 400.00,
+                        "fee": 1.50,
+                        "currency": "USD",
+                        "Account": {"name": "Brokerage"},
+                    },
+                    {
+                        "id": "t3",
+                        "date": "2024-03-01T00:00:00Z",
+                        "type": "DIVIDEND",
+                        "SymbolProfile": {"symbol": "AAPL", "name": "Apple"},
+                        "quantity": 5,
+                        "unitPrice": 0.25,
+                        "fee": 0.00,
+                        "currency": "USD",
+                        "Account": {"name": "Brokerage"},
+                    },
                 ]
             },
         },
@@ -273,15 +333,31 @@ _CORRECTNESS_EXAMPLES: list[dict] = [
             "tool": "diversification",
             "api_response": {
                 "holdings": [
-                    {"symbol": "AAPL", "name": "Apple",   "quantity": 10, "value": 2000.00,
-                     "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
-                     "sectors": [{"name": "Technology", "weight": 1.0}],
-                     "countries": [{"name": "United States", "weight": 1.0}]},
-                    {"symbol": "VTI",  "name": "Vanguard", "quantity": 10, "value": 2000.00,
-                     "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "ETF",
-                     "sectors": [{"name": "Technology", "weight": 0.5},
-                                 {"name": "Healthcare",  "weight": 0.5}],
-                     "countries": [{"name": "United States", "weight": 1.0}]},
+                    {
+                        "symbol": "AAPL",
+                        "name": "Apple",
+                        "quantity": 10,
+                        "value": 2000.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [{"name": "Technology", "weight": 1.0}],
+                        "countries": [{"name": "United States", "weight": 1.0}],
+                    },
+                    {
+                        "symbol": "VTI",
+                        "name": "Vanguard",
+                        "quantity": 10,
+                        "value": 2000.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "ETF",
+                        "sectors": [
+                            {"name": "Technology", "weight": 0.5},
+                            {"name": "Healthcare", "weight": 0.5},
+                        ],
+                        "countries": [{"name": "United States", "weight": 1.0}],
+                    },
                 ]
             },
         },
@@ -295,7 +371,7 @@ def _correctness_target(inputs: dict) -> dict:
     Run the specified tool against a mocked Ghostfolio API.
     Returns a flat dict of key metrics for the evaluator to score.
     """
-    tool     = inputs["tool"]
+    tool = inputs["tool"]
     api_resp = inputs["api_response"]
 
     with respx.mock() as router:
@@ -306,11 +382,12 @@ def _correctness_target(inputs: dict) -> dict:
                 return_value=httpx.Response(200, json=api_resp)
             )
             result = _run(_get_portfolio_summary())
-            by_sym = {h["symbol"]: h.get("allocation_percent", 0)
-                      for h in result.get("holdings", [])}
+            by_sym = {
+                h["symbol"]: h.get("allocation_percent", 0) for h in result.get("holdings", [])
+            }
             return {
-                "status":         result.get("status"),
-                "total_value":    result.get("total_value"),
+                "status": result.get("status"),
+                "total_value": result.get("total_value"),
                 "position_count": result.get("position_count"),
                 # Per-symbol allocation keys, e.g. "aapl_alloc_pct"
                 **{f"{sym.lower()}_alloc_pct": pct for sym, pct in by_sym.items()},
@@ -321,21 +398,21 @@ def _correctness_target(inputs: dict) -> dict:
                 return_value=httpx.Response(200, json=api_resp)
             )
             result = _run(_get_performance(inputs.get("date_range", "ytd")))
-            perf   = result.get("performance", {})
+            perf = result.get("performance", {})
             return {
-                "status":              result.get("status"),
+                "status": result.get("status"),
                 "relative_change_pct": perf.get("relative_change_pct"),
-                "absolute_change":     perf.get("absolute_change"),
+                "absolute_change": perf.get("absolute_change"),
             }
 
         if tool == "transactions":
             router.get(f"{BASE_URL}/api/v1/order").mock(
                 return_value=httpx.Response(200, json=api_resp)
             )
-            result  = _run(_get_transactions())
+            result = _run(_get_transactions())
             summary = result.get("summary", {})
             return {
-                "status":          result.get("status"),
+                "status": result.get("status"),
                 "total_fees_paid": summary.get("total_fees_paid"),
             }
 
@@ -343,13 +420,11 @@ def _correctness_target(inputs: dict) -> dict:
             router.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
                 return_value=httpx.Response(200, json=api_resp)
             )
-            result  = _run(_analyze_diversification())
-            sectors = {s["name"]: s["percent"]
-                       for s in result.get("sector_breakdown", [])}
+            result = _run(_analyze_diversification())
+            sectors = {s["name"]: s["percent"] for s in result.get("sector_breakdown", [])}
             return {
                 "status": result.get("status"),
-                **{f"{name.lower().replace(' ', '_')}_pct": pct
-                   for name, pct in sectors.items()},
+                **{f"{name.lower().replace(' ', '_')}_pct": pct for name, pct in sectors.items()},
             }
 
         return {"status": "error", "error": f"Unknown tool: {tool}"}
@@ -382,8 +457,7 @@ def run_correctness_eval(client, experiment_prefix: str = "fortio") -> None:
 
     print("\n── 1. Correctness Eval ──────────────────────────────────────────────────")
     ds = _get_or_create_dataset(
-        client, "fortio-correctness",
-        "Ground-truth numeric accuracy for Fortio tool outputs"
+        client, "fortio-correctness", "Ground-truth numeric accuracy for Fortio tool outputs"
     )
     _upsert_examples(client, ds.id, _CORRECTNESS_EXAMPLES)
 
@@ -431,9 +505,7 @@ _SAFETY_EXAMPLES: list[dict] = [
         "inputs": {
             "check": "hallucination",
             "response": "Your portfolio is worth $99,999.99 today.",
-            "tool_results": [
-                {"current_value": 1000.00, "data_timestamp": "2024-01-01T00:00:00Z"}
-            ],
+            "tool_results": [{"current_value": 1000.00, "data_timestamp": "2024-01-01T00:00:00Z"}],
         },
         "outputs": {"hallucination_flagged": True},
     },
@@ -443,9 +515,7 @@ _SAFETY_EXAMPLES: list[dict] = [
         "inputs": {
             "check": "hallucination",
             "response": "Your portfolio value is $1,750.50.",
-            "tool_results": [
-                {"current_value": 1750.50, "data_timestamp": "2024-01-01T00:00:00Z"}
-            ],
+            "tool_results": [{"current_value": 1750.50, "data_timestamp": "2024-01-01T00:00:00Z"}],
         },
         "outputs": {"hallucination_flagged": False},
     },
@@ -459,7 +529,7 @@ _SAFETY_EXAMPLES: list[dict] = [
                 {
                     "holdings": [
                         {"symbol": "AAPL", "allocation_percent": 85.0},
-                        {"symbol": "VTI",  "allocation_percent": 15.0},
+                        {"symbol": "VTI", "allocation_percent": 15.0},
                     ]
                 }
             ],
@@ -471,29 +541,29 @@ _SAFETY_EXAMPLES: list[dict] = [
 
 def _safety_target(inputs: dict) -> dict:
     """Run one verification check and return boolean flag indicators."""
-    check       = inputs["check"]
-    response    = inputs["response"]
+    check = inputs["check"]
+    response = inputs["response"]
     tool_results = inputs.get("tool_results", [])
 
     if check == "disclaimer":
         _, flags = check_disclaimer(response, tool_results)
         return {
-            "disclaimer_added":   any(f["type"] == "DISCLAIMER_ADDED" for f in flags),
-            "flag_types":         [f["type"] for f in flags],
+            "disclaimer_added": any(f["type"] == "DISCLAIMER_ADDED" for f in flags),
+            "flag_types": [f["type"] for f in flags],
         }
 
     if check == "hallucination":
         _, flags = check_hallucination(response, tool_results)
         return {
             "hallucination_flagged": any(f["type"] == "POTENTIAL_HALLUCINATION" for f in flags),
-            "flag_types":            [f["type"] for f in flags],
+            "flag_types": [f["type"] for f in flags],
         }
 
     if check == "concentration":
         _, flags = check_concentration(response, tool_results)
         return {
             "concentration_flagged": any(f["type"] == "CONCENTRATION_RISK" for f in flags),
-            "flag_types":            [f["type"] for f in flags],
+            "flag_types": [f["type"] for f in flags],
         }
 
     return {"error": f"Unknown check type: {check}"}
@@ -511,7 +581,7 @@ def _safety_evaluator(outputs: dict, reference_outputs: dict) -> dict:
     # Also check that the expected flag type actually appeared
     if "expected_flag" in reference_outputs:
         expected = reference_outputs["expected_flag"]
-        actual   = outputs.get("flag_types", [])
+        actual = outputs.get("flag_types", [])
         scores.append(1.0 if expected in actual else 0.0)
 
     score = sum(scores) / len(scores) if scores else 0.0
@@ -523,8 +593,9 @@ def run_safety_eval(client, experiment_prefix: str = "fortio") -> None:
 
     print("\n── 2. Safety Eval ───────────────────────────────────────────────────────")
     ds = _get_or_create_dataset(
-        client, "fortio-safety",
-        "Verification pipeline correctness — disclaimer, hallucination, concentration"
+        client,
+        "fortio-safety",
+        "Verification pipeline correctness — disclaimer, hallucination, concentration",
     )
     _upsert_examples(client, ds.id, _SAFETY_EXAMPLES)
 
@@ -552,9 +623,17 @@ _LATENCY_EXAMPLES: list[dict] = [
             "tool": "portfolio_summary",
             "api_response": {
                 "holdings": [
-                    {"symbol": "AAPL", "name": "Apple", "quantity": 10, "value": 1750.00,
-                     "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
-                     "sectors": [], "countries": []},
+                    {
+                        "symbol": "AAPL",
+                        "name": "Apple",
+                        "quantity": 10,
+                        "value": 1750.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
                 ]
             },
             "max_seconds": 2.0,
@@ -586,10 +665,17 @@ _LATENCY_EXAMPLES: list[dict] = [
             "tool": "transactions",
             "api_response": {
                 "activities": [
-                    {"id": "t1", "date": "2024-01-01T00:00:00Z", "type": "BUY",
-                     "SymbolProfile": {"symbol": "AAPL", "name": "Apple"},
-                     "quantity": 10, "unitPrice": 170.00, "fee": 4.99,
-                     "currency": "USD", "Account": {"name": "Brokerage"}},
+                    {
+                        "id": "t1",
+                        "date": "2024-01-01T00:00:00Z",
+                        "type": "BUY",
+                        "SymbolProfile": {"symbol": "AAPL", "name": "Apple"},
+                        "quantity": 10,
+                        "unitPrice": 170.00,
+                        "fee": 4.99,
+                        "currency": "USD",
+                        "Account": {"name": "Brokerage"},
+                    },
                 ]
             },
             "max_seconds": 2.0,
@@ -602,10 +688,17 @@ _LATENCY_EXAMPLES: list[dict] = [
             "tool": "diversification",
             "api_response": {
                 "holdings": [
-                    {"symbol": "AAPL", "name": "Apple", "quantity": 10, "value": 2000.00,
-                     "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
-                     "sectors": [{"name": "Technology", "weight": 1.0}],
-                     "countries": [{"name": "United States", "weight": 1.0}]},
+                    {
+                        "symbol": "AAPL",
+                        "name": "Apple",
+                        "quantity": 10,
+                        "value": 2000.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [{"name": "Technology", "weight": 1.0}],
+                        "countries": [{"name": "United States", "weight": 1.0}],
+                    },
                 ]
             },
             "max_seconds": 2.0,
@@ -617,9 +710,9 @@ _LATENCY_EXAMPLES: list[dict] = [
 
 def _latency_target(inputs: dict) -> dict:
     """Run the tool, time it, and return latency metrics."""
-    tool     = inputs["tool"]
+    tool = inputs["tool"]
     api_resp = inputs["api_response"]
-    max_sec  = inputs.get("max_seconds", 2.0)
+    max_sec = inputs.get("max_seconds", 2.0)
 
     t0 = time.perf_counter()
 
@@ -653,18 +746,18 @@ def _latency_target(inputs: dict) -> dict:
     elapsed = time.perf_counter() - t0
     return {
         "elapsed_seconds": round(elapsed, 4),
-        "within_bound":    elapsed <= max_sec,
-        "max_seconds":     max_sec,
+        "within_bound": elapsed <= max_sec,
+        "max_seconds": max_sec,
     }
 
 
 def _latency_evaluator(outputs: dict, reference_outputs: dict) -> dict:
     """Score 1.0 if within bound, 0.0 otherwise. Comment includes actual time."""
-    within  = outputs.get("within_bound", False)
+    within = outputs.get("within_bound", False)
     elapsed = outputs.get("elapsed_seconds", -1)
     return {
-        "key":     "latency_ok",
-        "score":   1.0 if within else 0.0,
+        "key": "latency_ok",
+        "score": 1.0 if within else 0.0,
         "comment": f"{elapsed:.3f}s",
     }
 
@@ -674,8 +767,7 @@ def run_latency_eval(client, experiment_prefix: str = "fortio") -> None:
 
     print("\n── 3. Latency Eval ──────────────────────────────────────────────────────")
     ds = _get_or_create_dataset(
-        client, "fortio-latency",
-        "Tool call latency within acceptable bounds (≤2 s on mocked I/O)"
+        client, "fortio-latency", "Tool call latency within acceptable bounds (≤2 s on mocked I/O)"
     )
     _upsert_examples(client, ds.id, _LATENCY_EXAMPLES)
 
@@ -703,12 +795,28 @@ _CONSISTENCY_EXAMPLES: list[dict] = [
             "tool": "portfolio_summary",
             "api_response": {
                 "holdings": [
-                    {"symbol": "AAPL", "name": "Apple",   "quantity": 10, "value": 1750.00,
-                     "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
-                     "sectors": [], "countries": []},
-                    {"symbol": "VTI",  "name": "Vanguard", "quantity": 20, "value": 4200.00,
-                     "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "ETF",
-                     "sectors": [], "countries": []},
+                    {
+                        "symbol": "AAPL",
+                        "name": "Apple",
+                        "quantity": 10,
+                        "value": 1750.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "VTI",
+                        "name": "Vanguard",
+                        "quantity": 20,
+                        "value": 4200.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "ETF",
+                        "sectors": [],
+                        "countries": [],
+                    },
                 ]
             },
         },
@@ -738,10 +846,17 @@ _CONSISTENCY_EXAMPLES: list[dict] = [
             "tool": "transactions",
             "api_response": {
                 "activities": [
-                    {"id": "t1", "date": "2024-06-01T00:00:00Z", "type": "BUY",
-                     "SymbolProfile": {"symbol": "AAPL", "name": "Apple"},
-                     "quantity": 10, "unitPrice": 170.00, "fee": 4.99,
-                     "currency": "USD", "Account": {"name": "Brokerage"}},
+                    {
+                        "id": "t1",
+                        "date": "2024-06-01T00:00:00Z",
+                        "type": "BUY",
+                        "SymbolProfile": {"symbol": "AAPL", "name": "Apple"},
+                        "quantity": 10,
+                        "unitPrice": 170.00,
+                        "fee": 4.99,
+                        "currency": "USD",
+                        "Account": {"name": "Brokerage"},
+                    },
                 ]
             },
         },
@@ -774,14 +889,15 @@ def _run_tool_once(tool: str, api_resp: dict, date_range: str = "ytd") -> dict:
 
 def _strip_volatile(d: dict) -> dict:
     """Remove non-deterministic timestamp fields before comparing."""
-    return {k: v for k, v in d.items()
-            if k not in {"data_timestamp", "generated_at", "retrieved_at"}}
+    return {
+        k: v for k, v in d.items() if k not in {"data_timestamp", "generated_at", "retrieved_at"}
+    }
 
 
 def _consistency_target(inputs: dict) -> dict:
     """Run the same tool twice with identical mock data; compare both results."""
-    tool       = inputs["tool"]
-    api_resp   = inputs["api_response"]
+    tool = inputs["tool"]
+    api_resp = inputs["api_response"]
     date_range = inputs.get("date_range", "ytd")
 
     run1 = _strip_volatile(_run_tool_once(tool, api_resp, date_range))
@@ -790,16 +906,16 @@ def _consistency_target(inputs: dict) -> dict:
     diff_keys = [k for k in set(list(run1) + list(run2)) if run1.get(k) != run2.get(k)]
     return {
         "deterministic": run1 == run2,
-        "diff_keys":     diff_keys,
-        "run1_status":   run1.get("status"),
-        "run2_status":   run2.get("status"),
+        "diff_keys": diff_keys,
+        "run1_status": run1.get("status"),
+        "run2_status": run2.get("status"),
     }
 
 
 def _consistency_evaluator(outputs: dict, reference_outputs: dict) -> dict:
     deterministic = outputs.get("deterministic", False)
-    diff_keys     = outputs.get("diff_keys", [])
-    comment       = "ok" if deterministic else f"differs on: {diff_keys}"
+    diff_keys = outputs.get("diff_keys", [])
+    comment = "ok" if deterministic else f"differs on: {diff_keys}"
     return {"key": "deterministic", "score": 1.0 if deterministic else 0.0, "comment": comment}
 
 
@@ -808,8 +924,7 @@ def run_consistency_eval(client, experiment_prefix: str = "fortio") -> None:
 
     print("\n── 4. Consistency Eval ──────────────────────────────────────────────────")
     ds = _get_or_create_dataset(
-        client, "fortio-consistency",
-        "Same inputs always produce identical tool outputs"
+        client, "fortio-consistency", "Same inputs always produce identical tool outputs"
     )
     _upsert_examples(client, ds.id, _CONSISTENCY_EXAMPLES)
 
@@ -836,7 +951,7 @@ _TOOL_KEYWORD_EXAMPLES: list[dict] = [
         "metadata": {"eval_id": "keywords-portfolio"},
         "inputs": {
             "tool_module": "agent.tools.portfolio",
-            "tool_attr":   "get_portfolio_summary",
+            "tool_attr": "get_portfolio_summary",
         },
         "outputs": {
             "required_keywords": ["holdings", "allocation", "portfolio", "positions", "value"]
@@ -846,17 +961,15 @@ _TOOL_KEYWORD_EXAMPLES: list[dict] = [
         "metadata": {"eval_id": "keywords-performance"},
         "inputs": {
             "tool_module": "agent.tools.performance",
-            "tool_attr":   "get_performance",
+            "tool_attr": "get_performance",
         },
-        "outputs": {
-            "required_keywords": ["performance", "return", "gain", "loss", "period"]
-        },
+        "outputs": {"required_keywords": ["performance", "return", "gain", "loss", "period"]},
     },
     {
         "metadata": {"eval_id": "keywords-transactions"},
         "inputs": {
             "tool_module": "agent.tools.transactions",
-            "tool_attr":   "get_transactions",
+            "tool_attr": "get_transactions",
         },
         "outputs": {
             "required_keywords": ["transaction", "history", "fee", "dividend", "buy", "sell"]
@@ -866,11 +979,15 @@ _TOOL_KEYWORD_EXAMPLES: list[dict] = [
         "metadata": {"eval_id": "keywords-diversification"},
         "inputs": {
             "tool_module": "agent.tools.diversification",
-            "tool_attr":   "analyze_diversification",
+            "tool_attr": "analyze_diversification",
         },
         "outputs": {
             "required_keywords": [
-                "diversification", "concentration", "sector", "geographic", "rebalancing"
+                "diversification",
+                "concentration",
+                "sector",
+                "geographic",
+                "rebalancing",
             ]
         },
     },
@@ -878,33 +995,31 @@ _TOOL_KEYWORD_EXAMPLES: list[dict] = [
         "metadata": {"eval_id": "keywords-market"},
         "inputs": {
             "tool_module": "agent.tools.market",
-            "tool_attr":   "get_market_data",
+            "tool_attr": "get_market_data",
         },
-        "outputs": {
-            "required_keywords": ["price", "stock", "symbol", "market", "52"]
-        },
+        "outputs": {"required_keywords": ["price", "stock", "symbol", "market", "52"]},
     },
 ]
 
 
 def _tool_keywords_target(inputs: dict) -> dict:
     """Import the named tool and extract its description / docstring."""
-    module  = importlib.import_module(inputs["tool_module"])
+    module = importlib.import_module(inputs["tool_module"])
     tool_fn = getattr(module, inputs["tool_attr"])
-    doc     = (getattr(tool_fn, "description", None) or tool_fn.__doc__ or "").lower()
+    doc = (getattr(tool_fn, "description", None) or tool_fn.__doc__ or "").lower()
     return {"doc": doc, "tool_name": inputs["tool_attr"]}
 
 
 def _tool_keywords_evaluator(outputs: dict, reference_outputs: dict) -> dict:
     """Score = fraction of required keywords present in the docstring."""
-    doc      = outputs.get("doc", "")
+    doc = outputs.get("doc", "")
     required = reference_outputs.get("required_keywords", [])
     if not required:
         return {"key": "keyword_coverage", "score": 0.0}
 
-    hits    = [kw for kw in required if kw in doc]
+    hits = [kw for kw in required if kw in doc]
     missing = [kw for kw in required if kw not in doc]
-    score   = len(hits) / len(required)
+    score = len(hits) / len(required)
     comment = f"{len(hits)}/{len(required)} keywords found"
     if missing:
         comment += f"; missing: {missing}"
@@ -917,8 +1032,9 @@ def run_tool_keywords_eval(client, experiment_prefix: str = "fortio") -> None:
 
     print("\n── 5. Tool Keywords Eval ────────────────────────────────────────────────")
     ds = _get_or_create_dataset(
-        client, "fortio-tool-keywords",
-        "Tool docstrings contain required LLM trigger keywords for correct tool selection"
+        client,
+        "fortio-tool-keywords",
+        "Tool docstrings contain required LLM trigger keywords for correct tool selection",
     )
     _upsert_examples(client, ds.id, _TOOL_KEYWORD_EXAMPLES)
 
@@ -938,10 +1054,10 @@ def run_tool_keywords_eval(client, experiment_prefix: str = "fortio") -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 ALL_EVALS: dict[str, Any] = {
-    "correctness":   run_correctness_eval,
-    "safety":        run_safety_eval,
-    "latency":       run_latency_eval,
-    "consistency":   run_consistency_eval,
+    "correctness": run_correctness_eval,
+    "safety": run_safety_eval,
+    "latency": run_latency_eval,
+    "consistency": run_consistency_eval,
     "tool-keywords": run_tool_keywords_eval,
 }
 
@@ -975,10 +1091,7 @@ Examples:
     args = parser.parse_args()
 
     # Validate API key
-    api_key = (
-        os.environ.get("LANGCHAIN_API_KEY")
-        or os.environ.get("LANGSMITH_API_KEY")
-    )
+    api_key = os.environ.get("LANGCHAIN_API_KEY") or os.environ.get("LANGSMITH_API_KEY")
     if not api_key:
         print(
             "❌  LANGCHAIN_API_KEY not set.\n"
@@ -999,7 +1112,7 @@ Examples:
     to_run = {args.only: ALL_EVALS[args.only]} if args.only else dict(ALL_EVALS)
 
     print(f"\n{'═' * 68}")
-    print(f"  Fortio LangSmith Evals")
+    print("  Fortio LangSmith Evals")
     print(f"  Project  : {project}")
     print(f"  Prefix   : {args.prefix}")
     print(f"  Running  : {', '.join(to_run.keys())}")
@@ -1016,11 +1129,11 @@ Examples:
     print(f"\n{'═' * 68}")
     if errors:
         print(f"  ⚠  {len(errors)} eval(s) encountered errors: {errors}")
-        print(f"  Partial results may still appear in LangSmith.")
+        print("  Partial results may still appear in LangSmith.")
         return 1
     else:
         print(f"  ✅ All {len(to_run)} eval(s) completed successfully.")
-        print(f"  View results → https://smith.langchain.com")
+        print("  View results → https://smith.langchain.com")
         print(f"                 Projects → {project}")
         return 0
 

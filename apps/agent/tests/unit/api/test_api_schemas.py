@@ -4,6 +4,7 @@ Unit tests for agent/api/schemas.py
 Validates request/response Pydantic model defaults, optional fields,
 and serialisation shapes — no network calls, no LLM, no graph.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -17,8 +18,8 @@ from agent.api.schemas import (
     VerificationFlag,
 )
 
-
 # ── HealthResponse ──────────────────────────────────────────────────────────
+
 
 class TestHealthResponse:
     def test_valid_response(self):
@@ -32,6 +33,7 @@ class TestHealthResponse:
 
 
 # ── ChatRequest ─────────────────────────────────────────────────────────────
+
 
 class TestChatRequest:
     def test_message_required(self):
@@ -64,6 +66,7 @@ class TestChatRequest:
 
 # ── ToolCallInfo ─────────────────────────────────────────────────────────────
 
+
 class TestToolCallInfo:
     def test_required_fields(self):
         t = ToolCallInfo(tool_name="get_portfolio_summary", status="ok")
@@ -86,6 +89,7 @@ class TestToolCallInfo:
 
 # ── VerificationFlag ─────────────────────────────────────────────────────────
 
+
 class TestVerificationFlag:
     def test_all_fields_required(self):
         flag = VerificationFlag(
@@ -103,6 +107,7 @@ class TestVerificationFlag:
 
 
 # ── ChatResponse ─────────────────────────────────────────────────────────────
+
 
 class TestChatResponse:
     def test_minimal_required_fields(self):

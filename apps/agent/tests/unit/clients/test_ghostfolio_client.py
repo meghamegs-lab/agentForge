@@ -6,11 +6,13 @@ API endpoints, and the module-level singleton.
 
 All HTTP calls are intercepted with respx — no real network requests.
 """
+
 from __future__ import annotations
 
 import httpx
 import pytest
 import respx
+from tenacity import RetryError
 
 from agent.clients.ghostfolio import (
     GhostfolioClient,
@@ -33,6 +35,7 @@ def _register_auth(token: str = AUTH_TOKEN) -> None:
 
 # ── GhostfolioError ──────────────────────────────────────────────────────────
 
+
 class TestGhostfolioError:
     def test_carries_status_code_and_message(self):
         err = GhostfolioError(404, "resource not found")
@@ -49,6 +52,7 @@ class TestGhostfolioError:
 
 
 # ── Bearer token caching ─────────────────────────────────────────────────────
+
 
 class TestBearerTokenCaching:
     @respx.mock
@@ -106,6 +110,7 @@ class TestBearerTokenCaching:
 
 # ── 401 retry with fresh token ────────────────────────────────────────────────
 
+
 class TestTokenRefreshOn401:
     @respx.mock
     async def test_401_triggers_token_invalidation_and_retry(self):
@@ -143,6 +148,7 @@ class TestTokenRefreshOn401:
 
 # ── get_portfolio_holdings ────────────────────────────────────────────────────
 
+
 class TestGetPortfolioHoldings:
     @respx.mock
     async def test_returns_parsed_json(self):
@@ -179,11 +185,14 @@ class TestGetPortfolioHoldings:
             return_value=httpx.Response(503, text="Service Unavailable")
         )
         client = GhostfolioClient(base_url=BASE_URL, access_token="tok")
-        with pytest.raises(Exception):
+        # tenacity wraps GhostfolioError in RetryError after exhausting retries;
+        # accept either the raw domain error or the tenacity wrapper.
+        with pytest.raises((GhostfolioError, RetryError)):
             await client.get_portfolio_holdings()
 
 
 # ── get_portfolio_performance ─────────────────────────────────────────────────
+
 
 class TestGetPortfolioPerformance:
     @respx.mock
@@ -225,6 +234,7 @@ class TestGetPortfolioPerformance:
 
 # ── get_orders ────────────────────────────────────────────────────────────────
 
+
 class TestGetOrders:
     @respx.mock
     async def test_no_params_sends_no_query_string(self):
@@ -263,9 +273,7 @@ class TestGetOrders:
     async def test_returns_activities_list(self):
         _register_auth()
         payload = {"activities": [{"id": "t1", "type": "BUY"}]}
-        respx.get(f"{BASE_URL}/api/v1/order").mock(
-            return_value=httpx.Response(200, json=payload)
-        )
+        respx.get(f"{BASE_URL}/api/v1/order").mock(return_value=httpx.Response(200, json=payload))
         client = GhostfolioClient(base_url=BASE_URL, access_token="tok")
         result = await client.get_orders()
         assert result == payload
@@ -273,14 +281,13 @@ class TestGetOrders:
 
 # ── get_public_portfolio ──────────────────────────────────────────────────────
 
+
 class TestGetPublicPortfolio:
     @respx.mock
     async def test_no_authorization_header_sent(self):
         """Public endpoint must NOT include an Authorization header."""
         pub_id = "public-abc-123"
-        pub_route = respx.get(
-            f"{BASE_URL}/api/v1/public/{pub_id}/portfolio"
-        ).mock(
+        pub_route = respx.get(f"{BASE_URL}/api/v1/public/{pub_id}/portfolio").mock(
             return_value=httpx.Response(200, json={"portfolio": {}})
         )
         client = GhostfolioClient(
@@ -325,6 +332,7 @@ class TestGetPublicPortfolio:
 
 
 # ── Module-level singleton ────────────────────────────────────────────────────
+
 
 class TestGetSharedClient:
     def test_returns_ghostfolio_client_instance(self):

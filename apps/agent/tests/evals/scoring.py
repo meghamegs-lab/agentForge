@@ -24,6 +24,7 @@ Usage
   report.add(result)
   report.print_summary()
 """
+
 from __future__ import annotations
 
 import json
@@ -140,25 +141,17 @@ class EvalReport:
         proportionally so the total always sums to 1.0).
         """
         rates = self.category_pass_rate()
-        present_weight_total = sum(
-            w for cat, w in CATEGORY_WEIGHTS.items() if cat in rates
-        )
+        present_weight_total = sum(w for cat, w in CATEGORY_WEIGHTS.items() if cat in rates)
         if present_weight_total == 0:
             return 0.0
-        score = sum(
-            rates[cat] * (CATEGORY_WEIGHTS[cat] / present_weight_total)
-            for cat in rates
-        )
+        score = sum(rates[cat] * (CATEGORY_WEIGHTS[cat] / present_weight_total) for cat in rates)
         return round(score, 4)
 
     def has_blocking_failure(self) -> bool:
         return any(r.is_blocking_failure for r in self._results)
 
     def overall_pass(self) -> bool:
-        return (
-            not self.has_blocking_failure()
-            and self.weighted_score() >= PASS_THRESHOLD
-        )
+        return not self.has_blocking_failure() and self.weighted_score() >= PASS_THRESHOLD
 
     # ── Console output ─────────────────────────────────────────────────────────
 
@@ -183,8 +176,7 @@ class EvalReport:
             rate = passed / total
             blocking_note = " ★" if cat in BLOCKING_CATEGORIES else ""
             print(
-                f"  {cat + blocking_note:<22} {passed:>6} {total:>6} "
-                f"{rate:>7.0%}  {weight:>7.0%}"
+                f"  {cat + blocking_note:<22} {passed:>6} {total:>6} {rate:>7.0%}  {weight:>7.0%}"
             )
         print("=" * 72 + "\n")
 
@@ -214,7 +206,7 @@ class EvalReport:
                 expected_tools = [t.get("tool") for t in r.tool_calls_expected]
                 actual_tools = [t.get("tool") for t in r.tool_calls_made]
                 if expected_tools != actual_tools:
-                    print(f"    Tool call diff:")
+                    print("    Tool call diff:")
                     print(f"      expected: {expected_tools}")
                     print(f"      actual:   {actual_tools}")
 

@@ -23,11 +23,13 @@ Tests covered:
   10. POST /api/chat tool_calls scoped to current turn only (multi-turn regression)
   11. POST /api/chat CORS header present for allowed origin
 """
+
 from __future__ import annotations
 
+import contextlib
 import json
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -35,8 +37,8 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from agent.api.main import app
 
-
 # ── Fixtures ─────────────────────────────────────────────────────────────────
+
 
 def _make_graph_state(
     answer: str = "Your portfolio summary.",
@@ -80,19 +82,16 @@ async def api_client():
     app.state.agent_graph = mock_graph
 
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         yield client, mock_graph
 
     # Clean up so other tests get a fresh state
-    try:
+    with contextlib.suppress(AttributeError):
         del app.state.agent_graph
-    except AttributeError:
-        pass
 
 
 # ── GET /health ───────────────────────────────────────────────────────────────
+
 
 class TestHealthEndpoint:
     async def test_returns_200(self, api_client):
@@ -118,6 +117,7 @@ class TestHealthEndpoint:
 
 # ── POST /api/chat — happy path ───────────────────────────────────────────────
 
+
 class TestChatEndpointHappyPath:
     async def test_returns_200(self, api_client):
         client, _ = api_client
@@ -129,17 +129,13 @@ class TestChatEndpointHappyPath:
         mock_graph.ainvoke.return_value = _make_graph_state(
             answer="Your portfolio is worth $8,000."
         )
-        data = (
-            await client.post("/api/chat", json={"message": "portfolio value"})
-        ).json()
+        data = (await client.post("/api/chat", json={"message": "portfolio value"})).json()
         assert data["answer"] == "Your portfolio is worth $8,000."
 
     async def test_response_contains_confidence(self, api_client):
         client, mock_graph = api_client
         mock_graph.ainvoke.return_value = _make_graph_state(confidence="MEDIUM")
-        data = (
-            await client.post("/api/chat", json={"message": "diversification?"})
-        ).json()
+        data = (await client.post("/api/chat", json={"message": "diversification?"})).json()
         assert data["confidence"] == "MEDIUM"
 
     async def test_conversation_id_echoed_back(self, api_client):
@@ -171,18 +167,14 @@ class TestChatEndpointHappyPath:
                 {"type": "DISCLAIMER_ADDED", "severity": "INFO", "message": "advice detected"},
             ],
         )
-        data = (
-            await client.post("/api/chat", json={"message": "should I rebalance?"})
-        ).json()
+        data = (await client.post("/api/chat", json={"message": "should I rebalance?"})).json()
         assert len(data["flags"]) == 1
         assert data["flags"][0]["type"] == "DISCLAIMER_ADDED"
 
     async def test_empty_flags_when_no_verification_issues(self, api_client):
         client, mock_graph = api_client
         mock_graph.ainvoke.return_value = _make_graph_state(flags=[])
-        data = (
-            await client.post("/api/chat", json={"message": "what time is it?"})
-        ).json()
+        data = (await client.post("/api/chat", json={"message": "what time is it?"})).json()
         assert data["flags"] == []
 
     async def test_tool_calls_populated_from_tool_messages(self, api_client):
@@ -198,9 +190,7 @@ class TestChatEndpointHappyPath:
                 )
             ]
         )
-        data = (
-            await client.post("/api/chat", json={"message": "portfolio?"})
-        ).json()
+        data = (await client.post("/api/chat", json={"message": "portfolio?"})).json()
         tool_calls = data.get("tool_calls", [])
         assert len(tool_calls) == 1
         assert tool_calls[0]["tool_name"] == "get_portfolio_summary"
@@ -274,9 +264,7 @@ class TestChatEndpointHappyPath:
     async def test_turn_number_in_response(self, api_client):
         client, mock_graph = api_client
         mock_graph.ainvoke.return_value = _make_graph_state(turn_number=3)
-        data = (
-            await client.post("/api/chat", json={"message": "test"})
-        ).json()
+        data = (await client.post("/api/chat", json={"message": "test"})).json()
         assert data["turn_number"] == 3
 
     async def test_graph_invoked_with_correct_thread_id(self, api_client):
@@ -293,6 +281,7 @@ class TestChatEndpointHappyPath:
 
 # ── POST /api/chat — error handling ──────────────────────────────────────────
 
+
 class TestChatEndpointErrorHandling:
     async def test_graph_exception_returns_200_not_500(self, api_client):
         """
@@ -307,26 +296,20 @@ class TestChatEndpointErrorHandling:
     async def test_graph_exception_returns_low_confidence(self, api_client):
         client, mock_graph = api_client
         mock_graph.ainvoke.side_effect = RuntimeError("LLM timeout")
-        data = (
-            await client.post("/api/chat", json={"message": "portfolio"})
-        ).json()
+        data = (await client.post("/api/chat", json={"message": "portfolio"})).json()
         assert data["confidence"] == "LOW"
 
     async def test_graph_exception_returns_agent_error_flag(self, api_client):
         client, mock_graph = api_client
         mock_graph.ainvoke.side_effect = RuntimeError("connection refused")
-        data = (
-            await client.post("/api/chat", json={"message": "portfolio"})
-        ).json()
+        data = (await client.post("/api/chat", json={"message": "portfolio"})).json()
         error_flags = [f for f in data.get("flags", []) if f["type"] == "AGENT_ERROR"]
         assert len(error_flags) == 1
 
     async def test_graph_exception_error_message_included(self, api_client):
         client, mock_graph = api_client
         mock_graph.ainvoke.side_effect = ValueError("token expired")
-        data = (
-            await client.post("/api/chat", json={"message": "portfolio"})
-        ).json()
+        data = (await client.post("/api/chat", json={"message": "portfolio"})).json()
         flags = data.get("flags", [])
         assert any("token expired" in f.get("message", "") for f in flags)
 
@@ -349,7 +332,7 @@ class TestChatEndpointErrorHandling:
         client, mock_graph = api_client
         mock_graph.ainvoke.return_value = {
             "messages": [AIMessage(content="Fallback answer from AIMessage.")],
-            "final_response": "",   # empty → triggers fallback
+            "final_response": "",  # empty → triggers fallback
             "verification_flags": [],
             "confidence": "HIGH",
             "tool_results": [],
@@ -358,13 +341,12 @@ class TestChatEndpointErrorHandling:
             "turn_number": 1,
             "context_entities": {},
         }
-        data = (
-            await client.post("/api/chat", json={"message": "test"})
-        ).json()
+        data = (await client.post("/api/chat", json={"message": "test"})).json()
         assert "Fallback answer from AIMessage." in data["answer"]
 
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
+
 
 class TestCORSMiddleware:
     async def test_allowed_origin_gets_cors_header(self, api_client):
