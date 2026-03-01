@@ -135,16 +135,16 @@ The MCP server also exposes:
 
 The agent ships with **60+ evaluation tests** (all mocked — zero real API calls) plus a LangSmith experiment suite.
 
-| Eval file                                                                                     | What it tests                                                                   | Tests |
-| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ----- |
-| [`tests/eval/test_correctness.py`](./apps/agent/tests/eval/test_correctness.py)               | Arithmetic accuracy, % conversions, sort order, fee sums, sector rollup         | 12    |
-| [`tests/eval/test_tool_selection.py`](./apps/agent/tests/eval/test_tool_selection.py)         | Tool docstring trigger keywords, domain boundary isolation, parameter mapping   | 10    |
-| [`tests/eval/test_llm_tool_selection.py`](./apps/agent/tests/eval/test_llm_tool_selection.py) | LLM-driven tool selection routing and keyword coverage                          | 14    |
-| [`tests/eval/test_tool_execution.py`](./apps/agent/tests/eval/test_tool_execution.py)         | Advanced tool happy path + error cases for all 6 advanced tools                 | 16    |
-| [`tests/eval/test_multi_step.py`](./apps/agent/tests/eval/test_multi_step.py)                 | Cross-tool consistency, referential integrity, multi-session monitor            | 12    |
-| [`tests/eval/test_edge_cases.py`](./apps/agent/tests/eval/test_edge_cases.py)                 | Dict vs list holdings, zero-value holdings, unicode names, large portfolios     | 10    |
-| [`tests/eval/test_adversarial.py`](./apps/agent/tests/eval/test_adversarial.py)               | Prompt injection, jailbreaks, off-topic deflection, fabricated number detection | 12    |
-| [`tests/eval/ls_evals.py`](./apps/agent/tests/eval/ls_evals.py)                               | LangSmith tracked experiments: correctness, safety, latency, consistency        | 23    |
+| Eval file                                                                                       | What it tests                                                                   | Tests |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ----- |
+| [`tests/evals/test_correctness.py`](./apps/agent/tests/evals/test_correctness.py)               | Arithmetic accuracy, % conversions, sort order, fee sums, sector rollup         | 12    |
+| [`tests/evals/test_tool_selection.py`](./apps/agent/tests/evals/test_tool_selection.py)         | Tool docstring trigger keywords, domain boundary isolation, parameter mapping   | 10    |
+| [`tests/evals/test_llm_tool_selection.py`](./apps/agent/tests/evals/test_llm_tool_selection.py) | LLM-driven tool selection routing and keyword coverage                          | 14    |
+| [`tests/evals/test_tool_execution.py`](./apps/agent/tests/evals/test_tool_execution.py)         | Advanced tool happy path + error cases for all 6 advanced tools                 | 16    |
+| [`tests/evals/test_multi_step.py`](./apps/agent/tests/evals/test_multi_step.py)                 | Cross-tool consistency, referential integrity, multi-session monitor            | 12    |
+| [`tests/evals/test_edge_cases.py`](./apps/agent/tests/evals/test_edge_cases.py)                 | Dict vs list holdings, zero-value holdings, unicode names, large portfolios     | 10    |
+| [`tests/evals/test_adversarial.py`](./apps/agent/tests/evals/test_adversarial.py)               | Prompt injection, jailbreaks, off-topic deflection, fabricated number detection | 12    |
+| [`tests/evals/ls_evals.py`](./apps/agent/tests/evals/ls_evals.py)                               | LangSmith tracked experiments: correctness, safety, latency, consistency        | 23    |
 
 Run the evals:
 
@@ -152,7 +152,7 @@ Run the evals:
 cd apps/agent
 
 # All eval tests (fast, ~5–10 s, no network required)
-pytest tests/eval/ -v
+pytest tests/evals/ -v
 
 # All unit tests (mocked, no network)
 pytest tests/unit/ -v
@@ -161,12 +161,12 @@ pytest tests/unit/ -v
 pytest tests/adversarial/ -v
 
 # Full suite with coverage report
-pytest tests/unit/ tests/eval/ --cov=agent --cov-report=term-missing
+pytest tests/unit/ tests/evals/ --cov=agent --cov-report=term-missing
 
 # LangSmith experiments (requires LANGCHAIN_API_KEY in .env)
-python tests/eval/ls_evals.py
-python tests/eval/ls_evals.py --only correctness
-python tests/eval/ls_evals.py --only safety
+python tests/evals/ls_evals.py
+python tests/evals/ls_evals.py --only correctness
+python tests/evals/ls_evals.py --only safety
 ```
 
 ---
