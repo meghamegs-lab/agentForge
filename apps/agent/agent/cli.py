@@ -19,6 +19,8 @@ After installing the package (pip install -e .):
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import uuid
 
 import structlog
@@ -33,7 +35,17 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
-from agent.graph.graph import build_graph
+from agent.config import settings
+
+# ── LangSmith tracing ──────────────────────────────────────────────────────────
+# pydantic-settings reads .env into Python objects but does NOT write to os.environ.
+# LangChain's tracing SDK only reads os.environ, so we push the values here
+# at import time — before any LangGraph graph or LLM is constructed.
+os.environ["LANGCHAIN_TRACING_V2"] = settings.langchain_tracing_v2
+os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
+os.environ["LANGCHAIN_PROJECT"] = settings.langchain_project
+
+from agent.graph.graph import build_graph  # noqa: E402 — must come after env is set
 
 app = typer.Typer(
     name="fortio",
@@ -320,9 +332,7 @@ def _render_response(final_state: dict, verbose: bool = False) -> None:
         console.print("[dim]─── Tool details ───[/dim]")
         for msg in tool_msgs:
             try:
-                import json as _json
-
-                result = _json.loads(msg.content) if isinstance(msg.content, str) else {}
+                result = json.loads(msg.content) if isinstance(msg.content, str) else {}
                 status = result.get("status", "ok")
             except Exception:
                 status = "ok"
@@ -675,6 +685,13 @@ def demo(
         fortio demo
         fortio demo --no-verbose
     """
+    # Single asyncio.run() call — one event loop for the entire demo so the
+    # httpx connection pool and LangGraph state survive across all 11 questions.
+    asyncio.run(_run_demo(user_id=user_id, verbose=verbose))
+
+
+async def _run_demo(user_id: str, verbose: bool) -> None:
+    """Async body of the demo command — runs all 11 tool questions in one event loop."""
     # One question per tool — ordered to match the tool list in the README
     _DEMO_QUESTIONS: list[tuple[str, str]] = [
         ("📊 [1/11] get_portfolio_summary", "What does my portfolio look like right now?"),
@@ -729,7 +746,7 @@ def demo(
 
         with console.status("[bold cyan]Running...[/bold cyan]", spinner="dots"):
             try:
-                final_state = asyncio.run(_invoke(question, cid, user_id))
+                final_state = await _invoke(question, cid, user_id)
                 passed += 1
             except Exception as exc:
                 console.print(f"[bold red]❌ Error:[/bold red] {exc}")

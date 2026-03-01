@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -24,23 +25,78 @@ VerificationFlag = dict[str, str]  # {type, severity, message}
 
 # ─── 1. Disclaimer Injection ──────────────────────────────────────────────────
 
+# Phrases that unambiguously signal investment *advice* intent.
+#
+# Design rule: every entry must be specific enough that it cannot appear in a
+# purely descriptive/analytical response.  Short, common English words are NOT
+# included bare because they fire on innocent compound terms:
+#   "buy"     → "buy-and-hold investor"   (describing a style, NOT advice)
+#   "sell"    → "sell-off", "sell side"   (market events, NOT advice)
+#   "invest"  → "investor", "investing"   (describing past actions, NOT advice)
+#   "shift"   → "a shift in allocation"   (describing a change, NOT advice)
+#   "rotate"  → "sector rotation stats"   (factual, NOT advice)
+#   "switch"  → "switch funds"            (might or might not be advice)
+#
+# Instead, we use multi-word directive phrases that can only appear when the
+# agent is actively recommending an action.
+#
+# Public name (no underscore) so tests and external callers can import and
+# iterate over the full keyword set for parametrised coverage checks.
 INVESTMENT_KEYWORDS = {
-    "buy",
-    "sell",
-    "invest",
+    # Explicit buy/sell directives
+    "you should buy",
+    "consider buying",
+    "recommend buying",
+    "buy more",
+    "buy into",
+    "you should sell",
+    "consider selling",
+    "recommend selling",
+    "sell your",
+    "sell all",
+    # Explicit invest directives
+    "start investing in",
+    "invest more",
+    "invest in",
+    "you should invest",
+    "consider investing",
+    # Portfolio action advice
     "rebalance",
     "recommend",
     "should i",
     "allocate",
-    "diversify",
-    "move",
-    "shift",
-    "rotate",
-    "switch",
+    "diversify",  # imperative: "you should diversify" — \b prevents "diversified"
+    "diversifying",  # progressive: "consider diversifying"
+    "move into",  # directive: "move into bonds"
+    "move out of",  # directive: "move out of equities"
+    "move your",  # directive: "move your allocation"
+    "shift your",  # directive: "shift your exposure"
+    "shift to",  # directive: "shift to fixed income"
+    "rotate into",  # directive: "rotate into defensive stocks"
+    "switch to",  # directive: "switch to a lower-fee fund"
     "portfolio change",
     "what to do",
     "advice",
+    # Guarantee / certainty language — no legitimate financial tool can promise
+    # risk-free or certain outcomes; this phrasing is a red flag for misleading advice.
+    "guaranteed",  # "guaranteed returns", "guaranteed profit", etc.
+    "risk-free",  # "risk-free investment"
+    "certain to",  # "certain to grow", "certain to profit"
+    "no risk",  # "no risk investment"
 }
+
+# Pre-compiled word-boundary pattern — evaluated once at import time.
+# Longest entries are sorted first so multi-word phrases like "should i" are
+# matched before their sub-words.
+_INVESTMENT_KW_RE = re.compile(
+    r"\b(?:"
+    + "|".join(
+        re.escape(kw).replace(r"\ ", r"\s+")  # allow any whitespace in multi-word phrases
+        for kw in sorted(INVESTMENT_KEYWORDS, key=len, reverse=True)
+    )
+    + r")\b",
+    re.IGNORECASE,
+)
 
 DISCLAIMER_TEXT = (
     "\n\n⚠️ **Not financial advice.** This information is for educational purposes only. "
@@ -52,12 +108,13 @@ DISCLAIMER_TEXT = (
 def check_disclaimer(response: str, tool_results: list[dict]) -> tuple[str, list[VerificationFlag]]:
     """
     Appends the standard financial disclaimer whenever the response contains
-    investment suggestion language. Idempotent — won't add twice.
+    investment suggestion language. Uses whole-word regex matching to avoid
+    false positives on descriptive words like "investment", "allocated",
+    "movement" that do not constitute advice. Idempotent — won't add twice.
     """
     flags: list[VerificationFlag] = []
-    response_lower = response.lower()
 
-    needs_disclaimer = any(kw in response_lower for kw in INVESTMENT_KEYWORDS)
+    needs_disclaimer = bool(_INVESTMENT_KW_RE.search(response))
 
     if needs_disclaimer and DISCLAIMER_TEXT.strip() not in response:
         response = response + DISCLAIMER_TEXT
@@ -127,12 +184,18 @@ def _nums_close(a: str, b: str, rel_tol: float = 0.05) -> bool:
     """
     Fuzzy-compare two numeric strings.
 
-    Handles rounding that the LLM applies to large numbers (e.g. reporting
-    volume as "171.7M" when the raw value is 171,731,114 — a 0.02 % difference
-    that should NOT trigger an UNSUPPORTED_CLAIM flag).
+    Handles two classes of format mismatch introduced by LLM number formatting:
 
-    A 5 % relative tolerance is intentionally loose enough to absorb
-    reasonable rounding but tight enough to catch a fabricated price
+    1. Rounding — "171.7M" (volume as rounded millions) ≈ 171,731,114 raw
+       → 0.02 % difference, well within 5 % tolerance.
+
+    2. Percentage ↔ decimal — tool results store returns as decimals (0.0565),
+       the LLM correctly converts to display percentages (5.65 %).
+       After stripping the % sign, "5.65" and "0.0565" look unrelated without
+       this check.  We detect the 100× scaling factor explicitly.
+
+    A 5 % relative tolerance is intentionally loose enough to absorb reasonable
+    rounding but tight enough to catch a fabricated price
     (e.g. "$178.50" vs the real "$213.00" — a ~16 % difference).
     """
     try:
@@ -141,8 +204,22 @@ def _nums_close(a: str, b: str, rel_tol: float = 0.05) -> bool:
             return True
         if fa == 0 or fb == 0:
             return False
-        return abs(fa - fb) / max(abs(fa), abs(fb)) <= rel_tol
-    except ValueError:
+        # Direct comparison within tolerance
+        if abs(fa - fb) / max(abs(fa), abs(fb)) <= rel_tol:
+            return True
+        # Percentage ↔ decimal: LLM says "5.65" (from "-5.65 %"), tool stores 0.0565.
+        # The ratio is 100× when one is the display-percentage form of the other.
+        # Guard: the decimal form must be ≤ 1.0 (valid fractions are in [0, 1]).
+        # This prevents false negatives like 99999.99 vs 1000 (ratio ≈ 100 but
+        # 1000 is not a decimal fraction — it's a dollar amount).
+        min_val = min(abs(fa), abs(fb))
+        max_val = max(abs(fa), abs(fb))
+        if min_val <= 1.0 and max_val > 0:
+            ratio = max_val / min_val
+            if abs(ratio - 100.0) / 100.0 <= rel_tol:
+                return True
+        return False
+    except (ValueError, ZeroDivisionError):
         return False
 
 
@@ -439,16 +516,16 @@ PREDICTION_KEYWORDS = {
 }
 
 HEDGING_KEYWORDS = {
+    # These indicate genuine data uncertainty — worth flagging as MEDIUM confidence.
+    # Deliberately excludes bare modals ("may", "might", "could") and vague prepositions
+    # ("about", "around") because the LLM routinely uses them for polite suggestions
+    # ("you may want to consolidate...") and natural phrasing ("about your portfolio"),
+    # not to signal uncertainty about financial data accuracy.
     "uncertain",
     "unclear",
     "approximately",
     "roughly",
-    "around",
-    "about",
     "estimate",
-    "may",
-    "might",
-    "could",
 }
 
 SPECULATIVE_KEYWORDS = {
@@ -521,39 +598,58 @@ def check_confidence(
     return response, flags, confidence
 
 
+# ─── Verification Check Registry ──────────────────────────────────────────────
+
+# Type alias for the standard verifier signature.
+# Each verifier takes (response, tool_results) and returns (modified_response, flags).
+#
+# To add a new check (Open-Closed Principle):
+#   1. Implement a function matching this signature.
+#   2. Append it to _VERIFICATION_CHECKS below.
+#   3. Do NOT modify run_verification_pipeline().
+#
+# check_confidence is intentionally excluded from this registry — it has a
+# different return signature (3-tuple) and requires post-pipeline coupling with
+# the disclaimer result, making it a natural explicit final step.
+VerifierFn = Callable[[str, list[dict]], tuple[str, list[VerificationFlag]]]
+
+_VERIFICATION_CHECKS: list[VerifierFn] = [
+    check_hallucination,  # 1. Flag unsupported financial numbers
+    check_freshness,  # 2. Warn on stale data timestamps
+    check_concentration,  # 3. Warn on over-weight positions (appends text block)
+    check_disclaimer,  # 4. Append disclaimer — must remain the last text-appending check
+]
+
+
 # ─── Pipeline ─────────────────────────────────────────────────────────────────
 
 
-# Runs all 5 checks in sequence and returns the final response, consolidated flags, and confidence level.
+# Runs all registered checks then confidence scoring; returns the final response, flags, and confidence.
 def run_verification_pipeline(
     response: str,
     tool_results: list[dict],
     reasoning_steps: int = 1,
 ) -> dict[str, Any]:
     """
-    Run all 5 verification checks in order.
-    Returns the (possibly modified) response, all flags, and confidence level.
+    Run all verification checks in order, then score confidence.
+
+    Standard checks are driven by _VERIFICATION_CHECKS — add a new check
+    there without modifying this function (Open-Closed Principle).
+
+    check_confidence is called explicitly last because:
+      1. Its signature differs (extra reasoning_steps param, 3-tuple return).
+      2. It needs to know whether the disclaimer check fired (post-pipeline coupling).
     """
     all_flags: list[VerificationFlag] = []
 
-    # 1. Hallucination guard
-    response, flags = check_hallucination(response, tool_results)
-    all_flags.extend(flags)
+    # ── Standard checks (open for extension via _VERIFICATION_CHECKS) ─────────
+    for check in _VERIFICATION_CHECKS:
+        response, flags = check(response, tool_results)
+        all_flags.extend(flags)
 
-    # 2. Freshness
-    response, flags = check_freshness(response, tool_results)
-    all_flags.extend(flags)
+    disclaimer_added = any(f["type"] == "DISCLAIMER_ADDED" for f in all_flags)
 
-    # 3. Concentration  ← runs before disclaimer so its block appears first
-    response, flags = check_concentration(response, tool_results)
-    all_flags.extend(flags)
-
-    # 4. Disclaimer  ← always last text appended, so "Not financial advice." is always the final line
-    response, flags = check_disclaimer(response, tool_results)
-    all_flags.extend(flags)
-    disclaimer_added = any(f["type"] == "DISCLAIMER_ADDED" for f in flags)
-
-    # 5. Confidence scoring
+    # ── Confidence scoring (explicit — different signature + post-processing) ──
     response, flags, confidence = check_confidence(response, tool_results, reasoning_steps)
     all_flags.extend(flags)
 

@@ -35,12 +35,46 @@ class TestDisclaimer:
         result2, flags2 = check_disclaimer(result1, [])
         assert result2.count("Not financial advice") == 1
 
-    def test_triggers_on_buy_keyword(self):
+    def test_triggers_on_buy_more_directive(self):
         _, flags = check_disclaimer("You might want to buy more AAPL.", [])
         assert any(f["type"] == "DISCLAIMER_ADDED" for f in flags)
 
     def test_triggers_on_diversify_keyword(self):
         _, flags = check_disclaimer("Consider diversifying into international stocks.", [])
+        assert any(f["type"] == "DISCLAIMER_ADDED" for f in flags)
+
+    def test_no_disclaimer_for_buy_and_hold_description(self):
+        # "buy-and-hold" is a strategy description, not investment advice.
+        # Regression: \bbuy\b matches "buy-and-hold" because '-' is a non-word char.
+        response = "That's a solid return for a buy-and-hold investor with zero fees."
+        result, flags = check_disclaimer(response, [])
+        assert "Not financial advice" not in result
+        assert len(flags) == 0
+
+    def test_no_disclaimer_for_investor_or_investing_descriptive(self):
+        # "investor" and "started investing" describe facts — not advice.
+        response = "Your return since you started investing in January 2024 is 14.1%."
+        result, flags = check_disclaimer(response, [])
+        assert "Not financial advice" not in result
+        assert len(flags) == 0
+
+    def test_no_disclaimer_for_performance_analysis_response(self):
+        # Full realistic returns response should NOT trigger disclaimer.
+        response = (
+            "Your portfolio has grown 14.1% over the last 5 years, turning $23,655 into $26,825. "
+            "That's a solid return for a buy-and-hold investor with zero fees. "
+            "Your return since you started investing in January 2024 is positive overall."
+        )
+        result, flags = check_disclaimer(response, [])
+        assert "Not financial advice" not in result
+        assert len(flags) == 0
+
+    def test_disclaimer_fires_for_explicit_buy_directive(self):
+        _, flags = check_disclaimer("You should buy more AAPL to reduce cash drag.", [])
+        assert any(f["type"] == "DISCLAIMER_ADDED" for f in flags)
+
+    def test_disclaimer_fires_for_rebalance(self):
+        _, flags = check_disclaimer("You should rebalance toward bonds.", [])
         assert any(f["type"] == "DISCLAIMER_ADDED" for f in flags)
 
 

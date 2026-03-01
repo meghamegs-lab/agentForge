@@ -8,15 +8,16 @@ Standout: Behavioural coaching from your OWN trade history — no other tool doe
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.tools import tool
 
-from agent.clients.ghostfolio import GhostfolioError, get_shared_client
-from agent.clients.market import MarketDataClient
+from agent.clients.ghostfolio import GhostfolioError, get_shared_client, normalize_holdings
+from agent.clients.market import get_shared_market_client
 
-_market = MarketDataClient()
+_market = get_shared_market_client()
 
 
 @tool
@@ -51,12 +52,7 @@ async def _transaction_patterns() -> dict[str, Any]:
         if not activities:
             return {"status": "empty", "message": "No transactions to analyse."}
 
-        # Normalise: Ghostfolio can return holdings as a list OR a dict keyed by symbol
-        raw = holdings_data.get("holdings", {})
-        if isinstance(raw, list):
-            holdings = {h.get("symbol", f"pos_{i}"): h for i, h in enumerate(raw)}
-        else:
-            holdings = raw or {}
+        holdings = normalize_holdings(holdings_data)
 
         buys = [a for a in activities if a.get("type") == "BUY"]
         sells = [a for a in activities if a.get("type") == "SELL"]
@@ -104,7 +100,10 @@ async def _transaction_patterns() -> dict[str, Any]:
             sym = act.get("SymbolProfile", {}).get("symbol", "UNKNOWN")
             symbol_trades.setdefault(sym, []).append(act)
 
-        trade_results = []
+        # ── Pre-compute per-symbol metadata (no I/O yet) ──────────────────────
+        symbol_meta: dict[str, dict] = {}
+        symbols_to_fetch: list[str] = []
+
         for sym, trades in symbol_trades.items():
             sym_buys = [t for t in trades if t.get("type") == "BUY"]
             if not sym_buys:
@@ -116,11 +115,45 @@ async def _transaction_patterns() -> dict[str, Any]:
                 if total_qty > 0
                 else 0
             )
+            symbol_meta[sym] = {
+                "sym_buys": sym_buys,
+                "trades": trades,
+                "avg_buy_price": avg_buy_price,
+                "total_fees": sum(t.get("fee", 0) or 0 for t in trades),
+                "total_invested": sum(
+                    t.get("unitPrice", 0) * t.get("quantity", 0) for t in sym_buys
+                ),
+            }
+            symbols_to_fetch.append(sym)
 
-            price_data = await _market.get_quote(sym)
-            current_price = (
-                price_data.get("current_price") if price_data.get("status") == "ok" else None
-            )
+        # ── Batch-fetch all prices in parallel (N× speedup vs sequential loop) ─
+        prices: dict[str, float | None] = {}
+        if symbols_to_fetch:
+            batch_result = await _market.get_batch_quotes(symbols_to_fetch)
+            if batch_result.get("status") == "ok":
+                quote_data = batch_result.get("quotes", {})
+                for sym in symbols_to_fetch:
+                    q = quote_data.get(sym, {})
+                    prices[sym] = q.get("current_price") if q.get("status") == "ok" else None
+            else:
+                # Fallback: individual parallel fetches if batch call itself fails
+                individual_results = await asyncio.gather(
+                    *[_market.get_quote(sym) for sym in symbols_to_fetch],
+                    return_exceptions=True,
+                )
+                for sym, res in zip(symbols_to_fetch, individual_results, strict=False):
+                    if isinstance(res, Exception) or not isinstance(res, dict):
+                        prices[sym] = None
+                    else:
+                        prices[sym] = (
+                            res.get("current_price") if res.get("status") == "ok" else None
+                        )
+
+        # ── Build trade_results using pre-fetched prices (no I/O in loop) ──────
+        trade_results = []
+        for sym, meta in symbol_meta.items():
+            avg_buy_price = meta["avg_buy_price"]
+            current_price = prices.get(sym)
 
             unrealized_pct = (
                 (current_price - avg_buy_price) / avg_buy_price * 100
@@ -128,9 +161,7 @@ async def _transaction_patterns() -> dict[str, Any]:
                 else None
             )
 
-            total_fees = sum(t.get("fee", 0) or 0 for t in trades)
-            total_invested = sum(t.get("unitPrice", 0) * t.get("quantity", 0) for t in sym_buys)
-
+            sym_buys = meta["sym_buys"]
             trade_results.append(
                 {
                     "symbol": sym,
@@ -140,9 +171,9 @@ async def _transaction_patterns() -> dict[str, Any]:
                     "unrealized_gain_pct": round(unrealized_pct, 2)
                     if unrealized_pct is not None
                     else None,
-                    "total_invested": round(total_invested, 2),
-                    "total_fees": round(total_fees, 2),
-                    "trade_count": len(trades),
+                    "total_invested": round(meta["total_invested"], 2),
+                    "total_fees": round(meta["total_fees"], 2),
+                    "trade_count": len(meta["trades"]),
                     "still_holding": sym in holdings,
                     "first_buy_date": min(t.get("date", "") for t in sym_buys)
                     if sym_buys

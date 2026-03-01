@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LLM-in-the-Loop Evaluation Suite — tests/eval/test_llm_tool_selection.py
+LLM-in-the-Loop Evaluation Suite — tests/evals/test_llm_tool_selection.py
 =========================================================================
 Invokes the full LangGraph agent with a REAL LLM (Claude Haiku by default)
 while keeping all external HTTP calls mocked via `respx`.
@@ -14,13 +14,13 @@ This gives true signal on whether the LLM:
 
 Separation of concerns
 -----------------------
-- Deterministic mock evals (CI):  tests/eval/test_correctness.py etc.
+- Deterministic mock evals (CI):  tests/evals/test_correctness.py etc.
 - LLM-in-the-loop evals (on-demand):  THIS FILE
 
 Run on demand only (costs ~$0.05–0.10 per full suite run):
-    pytest tests/eval/test_llm_tool_selection.py -v
+    pytest tests/evals/test_llm_tool_selection.py -v
     # or via ls_evals.py:
-    python tests/eval/ls_evals.py --only llm-tool-selection
+    python tests/evals/ls_evals.py --only llm-tool-selection
 
 Prerequisites
 -------------

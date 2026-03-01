@@ -1,24 +1,27 @@
 """
-Multi-Step Eval Suite — tests/eval/test_multi_step.py
-======================================================
+evalsNew/test_multi_step_v2.py — Multi-Step Reasoning Eval Suite (v2)
+======================================================================
+Eval IDs: MS01–MS12
+
 "Does the agent correctly chain multiple tools in sequence and produce
 consistent, cross-validated results?"
 
 Multi-step scenarios covered:
-  1.  Portfolio summary → fee drag: total_value from both tools is consistent
-  2.  Holdings → diversification: sectors returned match holding sector data
-  3.  Holdings → rebalancing: every trade symbol exists in the holdings
-  4.  Holdings → market context: all analysed positions are known holdings
-  5.  Holdings → health scorecard: grade reflects the actual position count
-  6.  Transactions → transaction patterns: buy count matches activity records
-  7.  Proactive monitor first session: no changes_since_last_session reported
-  8.  Proactive monitor with snapshot: portfolio value increase is detected
-  9.  Proactive monitor: new concentration breach detected after price move
-  10. Fee drag cross-check: fees from raw orders match fee_drag tool total
-  11. Health scorecard with 12 well-diversified positions → grade ≥ B
-  12. Market context + hedges: suggested_hedges list is non-empty for known themes
+  MS01 — Portfolio summary → fee drag: gross = net + fees identity
+  MS02 — Holdings → diversification: sectors match holding sector data
+  MS03 — Holdings → rebalancing: every trade symbol exists in holdings
+  MS04 — Holdings → market context: analysed positions are real holdings
+  MS05 — Holdings → health scorecard: grade reflects actual position count
+  MS06 — Transactions → patterns: buy count matches raw activity records
+  MS07 — Proactive monitor first session: no changes reported
+  MS08 — Proactive monitor with snapshot: portfolio value change detected
+  MS09 — Proactive monitor: new concentration breach detected
+  MS10 — Fee drag cross-check: fees from raw orders match tool total
+  MS11 — Health scorecard with 12 well-diversified positions → grade ≥ B
+  MS12 — Market context + hedges: suggested_hedges non-empty (4 themes)
 
 All tests mock network calls with respx — zero real I/O.
+Ghostfolio performance API: v2 flat format (no nested period keys).
 """
 from __future__ import annotations
 
@@ -40,22 +43,24 @@ from agent.tools.rebalancing import _rebalancing_plan
 from agent.tools.transaction_patterns import _transaction_patterns
 
 BASE_URL = settings.ghostfolio_base_url.rstrip("/")
-AUTH_RESP = {"authToken": "multi-step-token-42"}
+AUTH_RESP = {"authToken": "multi-step-v2-token"}
 
 # ---------------------------------------------------------------------------
-# Shared fixtures
+# Shared fixtures — Ghostfolio v2 flat performance format
 # ---------------------------------------------------------------------------
 
 HOLDINGS_LIST = [
     {
         "symbol": "AAPL", "name": "Apple Inc.", "quantity": 10, "value": 1750.00,
+        "valueInBaseCurrency": 1750.00, "currency": "USD",
         "assetClass": "EQUITY", "assetSubClass": "STOCK",
         "sectors": [{"name": "Technology", "weight": 1.0}],
         "countries": [{"name": "United States", "weight": 1.0}],
     },
     {
         "symbol": "VTI", "name": "Vanguard Total Stock Market ETF",
-        "quantity": 20, "value": 4200.00, "assetClass": "EQUITY", "assetSubClass": "ETF",
+        "quantity": 20, "value": 4200.00, "valueInBaseCurrency": 4200.00,
+        "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "ETF",
         "sectors": [
             {"name": "Technology", "weight": 0.30},
             {"name": "Healthcare", "weight": 0.13},
@@ -68,7 +73,8 @@ HOLDINGS_LIST = [
     },
     {
         "symbol": "MSFT", "name": "Microsoft Corporation",
-        "quantity": 5, "value": 2050.00, "assetClass": "EQUITY", "assetSubClass": "STOCK",
+        "quantity": 5, "value": 2050.00, "valueInBaseCurrency": 2050.00,
+        "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
         "sectors": [{"name": "Technology", "weight": 1.0}],
         "countries": [{"name": "United States", "weight": 1.0}],
     },
@@ -80,34 +86,33 @@ ORDERS_DATA = {
             "id": "tx1", "date": "2024-01-15T00:00:00Z", "type": "BUY",
             "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
             "quantity": 10, "unitPrice": 170.00, "fee": 4.99, "currency": "USD",
-            "Account": {"name": "Brokerage"},
+            "account": {"name": "Brokerage"},
         },
         {
             "id": "tx2", "date": "2024-02-20T00:00:00Z", "type": "BUY",
             "SymbolProfile": {"symbol": "VTI", "name": "Vanguard ETF"},
             "quantity": 20, "unitPrice": 210.00, "fee": 0.00, "currency": "USD",
-            "Account": {"name": "Brokerage"},
+            "account": {"name": "Brokerage"},
         },
         {
             "id": "tx3", "date": "2024-04-10T00:00:00Z", "type": "SELL",
             "SymbolProfile": {"symbol": "MSFT", "name": "Microsoft"},
             "quantity": 2, "unitPrice": 410.00, "fee": 2.50, "currency": "USD",
-            "Account": {"name": "Brokerage"},
+            "account": {"name": "Brokerage"},
         },
     ]
 }
 
-# Ghostfolio v2 flat performance format — one object per range request (no nested period keys).
-# The scorecard fetches ytd + 1y; both return the same mock response below.
-# netPerformancePercentage is a decimal fraction: 0.10 = 10%.
+# Ghostfolio v2 flat format — no nested period keys
 PERF_DATA = {
     "performance": {
         "netPerformancePercentage": 0.10,
         "netPerformance": 800.00,
-        "currentValueInBaseCurrency": 8000.00,
-        "totalInvestment": 7200.00,
-        "currentNetWorth": 8000.00,
-    }
+        "currentValueInBaseCurrency": 8800.00,
+        "totalInvestment": 8000.00,
+        "currentNetWorth": 8800.00,
+    },
+    "hasErrors": False,
 }
 
 
@@ -136,15 +141,14 @@ def _mock_orders():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Multi-Step 1 — Portfolio summary → fee drag: total_value consistent
+# MS01 — Portfolio summary → fee drag: gross = net + fees identity
 # ══════════════════════════════════════════════════════════════════════════════
 
 @respx.mock
-async def test_portfolio_and_fee_drag_total_value_consistent():
+async def test_ms01_portfolio_and_fee_drag_identity():
     """
     When both `get_portfolio_summary` and `get_fee_drag_analysis` are called
-    for the same portfolio, the total_value used internally by fee_drag
-    (derived from holdings) must equal the total reported by portfolio summary.
+    for the same portfolio, the accounting identity gross = net + fees must hold.
 
     Multi-step consistency: tool chain produces non-contradictory numbers.
     """
@@ -159,22 +163,23 @@ async def test_portfolio_and_fee_drag_total_value_consistent():
 
     fee_result = await _fee_drag("max")
     assert fee_result["status"] == "ok"
-    # fee_drag derives total_value from the same holdings endpoint
-    # — the absolute difference must be within float rounding tolerance
-    assert abs(fee_result.get("net_gain_after_fees", 0) + fee_result.get("total_fees_paid", 0)
-               - fee_result.get("gross_gain_without_fees", 0)) < 0.02, (
-        "gross = net + fees must hold (identity check)"
+
+    # Accounting identity: gross_gain = net_gain + fees
+    gross = fee_result.get("gross_gain_without_fees", 0)
+    net = fee_result.get("net_gain_after_fees", 0)
+    fees = fee_result.get("total_fees_paid", 0)
+    assert abs(gross - (net + fees)) < 0.02, (
+        f"MS01: Accounting identity failed. gross={gross} ≠ net({net}) + fees({fees})"
     )
-    # Both tools saw the same holdings — portfolio value must be positive
-    assert portfolio_total > 0
+    assert portfolio_total > 0, "MS01: Portfolio total must be positive"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Multi-Step 2 — Holdings → diversification: sectors match holding sector data
+# MS02 — Holdings → diversification: sectors match holding sector data
 # ══════════════════════════════════════════════════════════════════════════════
 
 @respx.mock
-async def test_holdings_and_diversification_sectors_are_consistent():
+async def test_ms02_holdings_and_diversification_sectors_consistent():
     """
     The sectors identified by `_analyze_diversification` must be a subset of
     the sector names defined in the holding records.
@@ -186,31 +191,29 @@ async def test_holdings_and_diversification_sectors_are_consistent():
     divers = await _analyze_diversification()
     assert divers["status"] == "ok"
 
-    # Collect all sector names from the source holdings
     known_sectors = set()
     for h in HOLDINGS_LIST:
         for s in h.get("sectors", []):
             known_sectors.add(s["name"])
 
-    # Sectors in diversification output must be from the known set
     for sector_entry in divers.get("sector_breakdown", []):
-        sname = sector_entry.get("sector", "")
-        if sname and sname != "Unknown":
-            assert sname in known_sectors or sname == "Other", (
-                f"Diversification tool returned unknown sector '{sname}' "
-                f"not present in holdings data. Known: {known_sectors}"
+        sname = sector_entry.get("name", sector_entry.get("sector", ""))
+        if sname and sname not in ("Unknown", "Other"):
+            assert sname in known_sectors, (
+                f"MS02: Diversification returned unknown sector '{sname}' "
+                f"not in holdings data. Known: {known_sectors}"
             )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Multi-Step 3 — Holdings → rebalancing: every trade symbol is in holdings
+# MS03 — Holdings → rebalancing: every trade symbol exists in holdings
 # ══════════════════════════════════════════════════════════════════════════════
 
 @respx.mock
-async def test_rebalancing_trades_only_contain_symbols_from_holdings():
+async def test_ms03_rebalancing_trades_only_contain_holdings_symbols():
     """
     The rebalancing plan must only recommend buying/selling positions that
-    ACTUALLY EXIST in the portfolio. It must never fabricate symbols.
+    ACTUALLY EXIST in the portfolio — it must never fabricate symbols.
     Multi-step: holdings → rebalancing — referential integrity check.
     """
     _auth()
@@ -226,17 +229,17 @@ async def test_rebalancing_trades_only_contain_symbols_from_holdings():
     known_symbols = {h["symbol"] for h in HOLDINGS_LIST}
     for trade in plan.get("trades", []):
         assert trade["symbol"] in known_symbols, (
-            f"Rebalancing trade references symbol '{trade['symbol']}' "
-            f"not found in holdings. Known: {known_symbols}"
+            f"MS03: Rebalancing referenced symbol '{trade['symbol']}' "
+            f"not in holdings. Known: {known_symbols}"
         )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Multi-Step 4 — Holdings → market context: analysed positions are real holdings
+# MS04 — Holdings → market context: analysed positions are real holdings
 # ══════════════════════════════════════════════════════════════════════════════
 
 @respx.mock
-async def test_market_context_positions_are_subset_of_holdings():
+async def test_ms04_market_context_positions_are_subset_of_holdings():
     """
     The `get_market_context_overlay` tool analyses each position in the portfolio.
     Every position_analysis entry must reference a symbol that actually exists
@@ -251,20 +254,20 @@ async def test_market_context_positions_are_subset_of_holdings():
     known_symbols = {h["symbol"] for h in HOLDINGS_LIST}
     for pos in ctx.get("position_analyses", []):
         assert pos["symbol"] in known_symbols, (
-            f"Market context analysed '{pos['symbol']}' which is not in holdings"
+            f"MS04: Market context analysed '{pos['symbol']}' not in holdings"
         )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Multi-Step 5 — Holdings → health scorecard: grade reflects position count
+# MS05 — Holdings → health scorecard: grade reflects position count
 # ══════════════════════════════════════════════════════════════════════════════
 
 @respx.mock
-async def test_health_scorecard_grade_reflects_position_count():
+async def test_ms05_health_scorecard_grade_reflects_position_count():
     """
     A portfolio with only 3 positions should receive a grade penalty for
-    being undiversified.  The scorecard must reflect the real position count.
-    Multi-step: holdings → health_scorecard — data faithfulness check.
+    being undiversified. The scorecard must reflect the real position count.
+    Multi-step: holdings + performance → health_scorecard — faithfulness check.
     """
     _auth()
     _mock_holdings()
@@ -273,25 +276,25 @@ async def test_health_scorecard_grade_reflects_position_count():
     sc = await _scorecard()
     assert sc["status"] == "ok"
     assert sc["position_count"] == len(HOLDINGS_LIST), (
-        f"Scorecard reported {sc['position_count']} positions "
+        f"MS05: Scorecard reported {sc['position_count']} positions "
         f"but holdings has {len(HOLDINGS_LIST)}"
     )
     # 3 positions → should penalise (grade ≤ B, score ≤ 90)
     assert sc["score"] <= 90, (
-        "3-position portfolio must not score 100 (no diversity penalty applied)"
+        "MS05: 3-position portfolio must not score 100 (no diversity penalty applied)"
     )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Multi-Step 6 — Transactions → patterns: buy count matches activity records
+# MS06 — Transactions → patterns: buy count matches raw activity records
 # ══════════════════════════════════════════════════════════════════════════════
 
 @respx.mock
-async def test_transaction_patterns_buy_count_matches_source_activities():
+async def test_ms06_transaction_patterns_buy_count_matches_source():
     """
     The transaction patterns tool reports total_buy_transactions.
     This count must exactly equal the number of BUY-type activities in the
-    raw orders data — the tool must not double-count or skip transactions.
+    raw orders data — no double-counting or skipped transactions.
     """
     _auth()
     _mock_orders()
@@ -307,17 +310,17 @@ async def test_transaction_patterns_buy_count_matches_source_activities():
         1 for a in ORDERS_DATA["activities"] if a["type"] == "BUY"
     )
     assert patterns["total_buy_transactions"] == expected_buys, (
-        f"Expected {expected_buys} BUY transactions; "
+        f"MS06: Expected {expected_buys} BUY transactions; "
         f"patterns tool reported {patterns['total_buy_transactions']}"
     )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Multi-Step 7 — Proactive monitor first session: no changes reported
+# MS07 — Proactive monitor first session: no changes reported
 # ══════════════════════════════════════════════════════════════════════════════
 
 @respx.mock
-async def test_proactive_monitor_first_session_reports_no_changes():
+async def test_ms07_proactive_monitor_first_session_no_changes():
     """
     On the very first session (empty previous_snapshot_json), there are no
     prior allocations to compare against — changes_since_last_session must be [].
@@ -330,20 +333,19 @@ async def test_proactive_monitor_first_session_reports_no_changes():
 
     assert result["status"] == "ok"
     assert result["changes_since_last_session"] == [], (
-        "First session with no prior snapshot must report zero changes"
+        "MS07: First session with no prior snapshot must report zero changes"
     )
-    # Snapshot must be returned for the caller to persist
     assert "current_snapshot" in result
     assert "allocations" in result["current_snapshot"]
     assert len(result["current_snapshot"]["allocations"]) == len(HOLDINGS_LIST)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Multi-Step 8 — Proactive monitor with snapshot: portfolio value change detected
+# MS08 — Proactive monitor with snapshot: portfolio value change detected
 # ══════════════════════════════════════════════════════════════════════════════
 
 @respx.mock
-async def test_proactive_monitor_with_snapshot_detects_value_change():
+async def test_ms08_proactive_monitor_detects_value_change():
     """
     Multi-step: session 1 returns snapshot → session 2 uses that snapshot.
     If total portfolio value changed by ≥2% between sessions, it must be
@@ -352,9 +354,9 @@ async def test_proactive_monitor_with_snapshot_detects_value_change():
     _auth()
     _mock_holdings()
 
-    # Simulate a previous snapshot where portfolio was worth $6,500
-    # (current is ~$8,000 — a 23% gain)
-    prev_allocs = {h["symbol"]: round(h["value"] / 8000 * 100, 2) for h in HOLDINGS_LIST}
+    # Previous snapshot: portfolio was worth $6,500 (current is ~$8,000 — 23% gain)
+    total = sum(h["value"] for h in HOLDINGS_LIST)
+    prev_allocs = {h["symbol"]: round(h["value"] / total * 100, 2) for h in HOLDINGS_LIST}
     prev_snapshot = {
         "total_value": 6500.00,
         "position_count": 3,
@@ -365,34 +367,32 @@ async def test_proactive_monitor_with_snapshot_detects_value_change():
     result = await _proactive_monitor(prev_snap_json=json.dumps(prev_snapshot))
 
     assert result["status"] == "ok"
-    # The value change (6500 → ~8000) is >2% — must appear in changes
     value_changes = [
         c for c in result["changes_since_last_session"]
         if c.get("direction") == "VALUE_CHANGE"
     ]
     assert len(value_changes) >= 1, (
-        "A 23% portfolio value increase must be surfaced as a VALUE_CHANGE"
+        "MS08: A 23% portfolio value increase must be surfaced as a VALUE_CHANGE"
     )
     change = value_changes[0]
-    assert change["change_pp"] > 0, "Portfolio increased in value — change must be positive"
+    assert change["change_pp"] > 0, "MS08: Portfolio increased — change_pp must be positive"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Multi-Step 9 — Proactive monitor: new concentration breach since last session
+# MS09 — Proactive monitor: new concentration breach detected
 # ══════════════════════════════════════════════════════════════════════════════
 
 @respx.mock
-async def test_proactive_monitor_detects_new_concentration_breach():
+async def test_ms09_proactive_monitor_detects_concentration_breach():
     """
     If a position was below the concentration threshold last session but is now
     above it (due to price appreciation), the monitor must emit a
     NEW_CONCENTRATION_BREACH alert.
     """
     _auth()
-    # AAPL = $1750 out of total ~$8000 = ~21.9% — above 20% threshold
+    # AAPL = $1750 out of ~$8000 = ~21.9% — above 20% threshold
     _mock_holdings()
 
-    # Previous session: AAPL was only 15% (below threshold)
     total = sum(h["value"] for h in HOLDINGS_LIST)
     prev_allocs = {h["symbol"]: round(h["value"] / total * 100, 2) for h in HOLDINGS_LIST}
     # Artificially lower AAPL's previous allocation to below threshold
@@ -413,17 +413,17 @@ async def test_proactive_monitor_detects_new_concentration_breach():
         if a.get("type") == "NEW_CONCENTRATION_BREACH"
     ]
     assert len(breach_alerts) >= 1, (
-        "AAPL crossing the concentration threshold since last session "
-        "must generate a NEW_CONCENTRATION_BREACH alert"
+        "MS09: AAPL crossing the concentration threshold must generate "
+        "a NEW_CONCENTRATION_BREACH alert"
     )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Multi-Step 10 — Fee drag cross-check: fees from raw orders match tool total
+# MS10 — Fee drag cross-check: fees from raw orders match tool total
 # ══════════════════════════════════════════════════════════════════════════════
 
 @respx.mock
-async def test_fee_drag_total_fees_matches_sum_of_order_fees():
+async def test_ms10_fee_drag_total_matches_sum_of_order_fees():
     """
     The fee_drag tool must sum all fees from the orders endpoint correctly.
     Cross-validate: manually summing fees from ORDERS_DATA must equal
@@ -441,24 +441,23 @@ async def test_fee_drag_total_fees_matches_sum_of_order_fees():
         a.get("fee", 0) or 0 for a in ORDERS_DATA["activities"]
     )
     assert abs(result["total_fees_paid"] - expected_fees) < 0.01, (
-        f"Fee drag tool reported ${result['total_fees_paid']:.2f} total fees "
+        f"MS10: fee_drag reported ${result['total_fees_paid']:.2f} total fees "
         f"but raw orders sum to ${expected_fees:.2f}"
     )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Multi-Step 11 — Health scorecard with 12 well-diversified positions → grade B+
+# MS11 — Health scorecard with 12 well-diversified positions → grade B+
 # ══════════════════════════════════════════════════════════════════════════════
 
 @respx.mock
-async def test_health_scorecard_well_diversified_portfolio_earns_high_grade():
+async def test_ms11_health_scorecard_well_diversified_earns_high_grade():
     """
     A well-diversified portfolio (12 positions, each ~8%, multiple sectors,
     includes bonds) should score ≥65 (grade B or better).
     Multi-step: holdings + 2x performance → scorecard synthesis.
     """
     _auth()
-    # Build a well-diversified portfolio
     sectors = [
         "Technology", "Healthcare", "Financial Services",
         "Consumer Defensive", "Industrials", "Energy",
@@ -466,6 +465,7 @@ async def test_health_scorecard_well_diversified_portfolio_earns_high_grade():
     diversified_holdings = [
         {
             "symbol": f"ETF{i:02d}", "name": f"ETF {i}", "quantity": 10, "value": 1000.00,
+            "valueInBaseCurrency": 1000.00, "currency": "USD",
             "assetClass": "EQUITY" if i < 10 else "BOND",
             "assetSubClass": "ETF",
             "sectors": [{"name": sectors[i % len(sectors)], "weight": 1.0}],
@@ -482,25 +482,25 @@ async def test_health_scorecard_well_diversified_portfolio_earns_high_grade():
     assert sc["status"] == "ok"
     assert sc["position_count"] == 12
     assert sc["score"] >= 65, (
-        f"Well-diversified 12-position portfolio should score ≥65 (grade B+), "
+        f"MS11: Well-diversified 12-position portfolio should score ≥65, "
         f"got score={sc['score']}, grade={sc['grade']}"
     )
     assert sc["grade"] in ("A", "B"), (
-        f"12-position portfolio should earn grade A or B, got {sc['grade']}"
+        f"MS11: 12-position portfolio should earn grade A or B, got {sc['grade']}"
     )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Multi-Step 12 — Market context + hedges: suggested_hedges is non-empty
+# MS12 — Market context + hedges: suggested_hedges non-empty (all 4 themes)
 # ══════════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.parametrize("theme", ["rising_rates", "recession", "inflation", "bull_market"])
 @respx.mock
-async def test_market_context_suggested_hedges_always_non_empty(theme: str):
+async def test_ms12_market_context_suggested_hedges_non_empty(theme: str):
     """
     For every valid macro theme, the market context tool must return at least
-    one suggested hedge instrument.  These are pulled from a static map —
-    validating that the map contains entries for all 4 themes.
+    one suggested hedge instrument. These are pulled from a static map —
+    validating that the map contains entries for all 4 supported themes.
     Multi-step: holdings → macro sensitivity map → hedge recommendations.
     """
     _auth()
@@ -511,5 +511,5 @@ async def test_market_context_suggested_hedges_always_non_empty(theme: str):
     assert ctx["macro_theme"] == theme
     hedges = ctx.get("suggested_hedges", [])
     assert len(hedges) >= 1, (
-        f"Theme '{theme}' must have at least one suggested hedge instrument; got {hedges}"
+        f"MS12: Theme '{theme}' must have at least one suggested hedge; got {hedges}"
     )

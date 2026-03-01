@@ -460,9 +460,15 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
         answer = final_state.get("final_response", "")
         if not answer:
             # Fallback: read directly from last message
-            last_msg = final_state["messages"][-1]
-            content = getattr(last_msg, "content", "")
-            answer = content if isinstance(content, str) else str(content)
+            messages = final_state.get("messages", [])
+            if messages:
+                last_msg = messages[-1]
+                content = getattr(last_msg, "content", "")
+                answer = content if isinstance(content, str) else str(content)
+            else:
+                # Graph exited with no messages — surface a clean user-facing message
+                # rather than letting an IndexError propagate to the generic handler.
+                answer = "I was unable to generate a response. Please try again."
 
         flags = [
             VerificationFlag(
@@ -497,7 +503,7 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
                 tool_calls.append(
                     ToolCallInfo(
                         tool_name=msg.name or "unknown",
-                        status=result.get("status", "success"),
+                        status=result.get("status", "ok"),
                         error=result.get("error"),
                     )
                 )

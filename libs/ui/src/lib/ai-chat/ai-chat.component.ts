@@ -21,7 +21,6 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Subject } from 'rxjs';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -116,8 +115,6 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
   // The conversation_id returned by Fortio (lets agent remember context)
   private conversationId = '';
 
-  private readonly unsubscribeSubject = new Subject<void>();
-
   /** AbortController for the current in-flight streaming fetch; null when idle. */
   private currentAbortController: AbortController | null = null;
 
@@ -144,14 +141,17 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
           prompts: [
             { text: 'How has my portfolio performed this year?' },
             { text: 'What are my returns over the last 5 years?' },
-            { text: 'How did I do last month compared to year-to-date?' }
+            { text: 'How did I do last month vs year-to-date?' }
           ]
         },
         {
           tool: 'get_transactions',
           prompts: [
-            { text: 'Show me my last 10 trades' },
-            { text: 'How much did I pay in fees this year?' },
+            {
+              text: 'Show me my last 10 trades',
+              note: 'Uses limit=10 parameter'
+            },
+            { text: 'Show me my fee transactions for this year' },
             { text: 'Show me all my dividend payments' },
             { text: 'What did I buy and sell in 2024?' }
           ]
@@ -193,7 +193,7 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
               text: 'How much have fees cost me as a percentage of my returns?'
             },
             {
-              text: 'Which stocks are costing me the most in transaction fees?'
+              text: 'Which of my holdings have the highest fee drag on returns?'
             }
           ]
         },
@@ -201,7 +201,8 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
           tool: 'get_rebalancing_plan',
           prompts: [
             {
-              text: 'I want a 60/30/10 stocks/bonds/cash split — what exactly do I need to buy and sell?'
+              text: 'I want 45% US stocks, 15% international, 30% bonds, 10% cash — what do I need to buy and sell?',
+              note: 'Uses all 4 rebalancing parameters explicitly'
             },
             {
               text: 'How do I rebalance my portfolio? Give me specific dollar amounts'
@@ -627,7 +628,5 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
     if (this.pendingRaf !== null) {
       cancelAnimationFrame(this.pendingRaf);
     }
-    this.unsubscribeSubject.next();
-    this.unsubscribeSubject.complete();
   }
 }

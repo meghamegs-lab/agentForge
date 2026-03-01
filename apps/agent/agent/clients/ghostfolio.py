@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_fixed
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_fixed
 
 from agent.config import settings
 
@@ -26,6 +26,23 @@ class GhostfolioError(Exception):
         self.status_code = status_code
         self.message = message
         super().__init__(f"Ghostfolio API error {status_code}: {message}")
+
+
+# Status codes that are worth retrying — transient server/network issues and
+# token expiry (401 is handled by invalidating the cached bearer token first).
+# 400, 403, 404, 405 … are permanent client errors; retrying them wastes time.
+_RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({401, 429, 500, 502, 503, 504})
+
+
+def _is_retryable_error(exc: BaseException) -> bool:
+    """Return True for exceptions that warrant a retry.
+
+    - ``GhostfolioError``: only retry on transient / auth status codes.
+    - All other exceptions (httpx network errors, timeouts, etc.): always retry.
+    """
+    if isinstance(exc, GhostfolioError):
+        return exc.status_code in _RETRYABLE_STATUS_CODES
+    return True
 
 
 class GhostfolioClient:
@@ -95,7 +112,11 @@ class GhostfolioClient:
     # Retry: 2 attempts with a fixed 0.3 s gap (fast fail, avoids multi-second
     # exponential back-off that was adding latency to error paths).
     # Fetches all current portfolio positions from GET /api/v1/portfolio/holdings (retries on 401).
-    @retry(stop=stop_after_attempt(2), wait=wait_fixed(0.3))
+    @retry(
+        stop=stop_after_attempt(2),
+        wait=wait_fixed(0.3),
+        retry=retry_if_exception(_is_retryable_error),
+    )
     async def get_portfolio_holdings(self) -> dict[str, Any]:
         """GET /api/v1/portfolio/holdings — returns all positions."""
         bearer = await self._get_bearer_token()
@@ -111,7 +132,11 @@ class GhostfolioClient:
         return resp.json()
 
     # Fetches portfolio performance metrics (returns, gains) for the given date range.
-    @retry(stop=stop_after_attempt(2), wait=wait_fixed(0.3))
+    @retry(
+        stop=stop_after_attempt(2),
+        wait=wait_fixed(0.3),
+        retry=retry_if_exception(_is_retryable_error),
+    )
     async def get_portfolio_performance(self, date_range: str = "max") -> dict[str, Any]:
         """GET /api/v2/portfolio/performance — YTD, 1Y, max returns."""
         bearer = await self._get_bearer_token()
@@ -128,7 +153,11 @@ class GhostfolioClient:
         return resp.json()
 
     # Fetches transaction order history from GET /api/v1/order with optional account/date/type filters.
-    @retry(stop=stop_after_attempt(2), wait=wait_fixed(0.3))
+    @retry(
+        stop=stop_after_attempt(2),
+        wait=wait_fixed(0.3),
+        retry=retry_if_exception(_is_retryable_error),
+    )
     async def get_orders(
         self,
         account_id: str | None = None,
@@ -182,6 +211,25 @@ class GhostfolioClient:
 # make its own POST /auth/anonymous, adding 200-400 ms latency per tool.
 
 _shared_client: GhostfolioClient | None = None
+
+
+def normalize_holdings(data: dict) -> dict[str, dict]:
+    """
+    Normalize a Ghostfolio holdings payload to a symbol-keyed dict.
+
+    Ghostfolio can return holdings as either:
+    - A dict keyed by symbol: {"AAPL": {...}, "MSFT": {...}}
+    - A list of holding objects: [{"symbol": "AAPL", ...}, ...]
+
+    Both forms are normalised to dict[symbol, holding] so tool code
+    never has to branch on the response shape. Tools that need a list
+    (diversification.py, portfolio.py) should NOT use this helper —
+    they normalise in the opposite direction (dict → list).
+    """
+    raw = data.get("holdings", {})
+    if isinstance(raw, list):
+        return {h.get("symbol", f"pos_{i}"): h for i, h in enumerate(raw)}
+    return raw or {}
 
 
 # Returns the process-wide GhostfolioClient singleton, creating it on the first call.

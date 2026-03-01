@@ -80,6 +80,15 @@ class MarketDataClient:
 
         current_price = float(hist["Close"].iloc[-1])
 
+        # Use the actual last-bar timestamp from yfinance so the freshness checker
+        # correctly identifies weekend/holiday prices as stale rather than reporting
+        # them as brand-new. On weekends, hist.index[-1] is Friday's close, not today.
+        try:
+            data_timestamp = hist.index[-1].tz_convert("UTC").isoformat()
+        except Exception:
+            # Fallback: if the index is not tz-aware or conversion fails, use now()
+            data_timestamp = datetime.now(UTC).isoformat()
+
         return {
             "status": "ok",
             "symbol": symbol.upper(),
@@ -89,7 +98,7 @@ class MarketDataClient:
             "fifty_two_week_low": getattr(info, "year_low", None),
             "market_cap": getattr(info, "market_cap", None),
             "volume": getattr(info, "three_month_average_volume", None),
-            "data_timestamp": datetime.now(UTC).isoformat(),
+            "data_timestamp": data_timestamp,
             "source": "Yahoo Finance (via yfinance)",
         }
 
@@ -136,3 +145,21 @@ class MarketDataClient:
             "data_timestamp": datetime.now(UTC).isoformat(),
             "source": "Yahoo Finance (via yfinance)",
         }
+
+
+_shared_market_client: MarketDataClient | None = None
+
+
+# Returns the process-wide MarketDataClient singleton, creating it on the first call.
+def get_shared_market_client() -> MarketDataClient:
+    """
+    Return the process-wide MarketDataClient singleton.
+
+    MarketDataClient is stateless (no auth token to cache), so a single instance
+    shared across all tool modules avoids redundant object allocations.
+    Thread-safe enough for asyncio (single-threaded event loop).
+    """
+    global _shared_market_client
+    if _shared_market_client is None:
+        _shared_market_client = MarketDataClient()
+    return _shared_market_client

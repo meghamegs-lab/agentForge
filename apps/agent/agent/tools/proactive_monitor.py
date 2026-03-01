@@ -13,11 +13,11 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from agent.clients.ghostfolio import GhostfolioError, get_shared_client
-from agent.clients.market import MarketDataClient
+from agent.clients.ghostfolio import GhostfolioError, get_shared_client, normalize_holdings
+from agent.clients.market import get_shared_market_client
 from agent.config import settings
 
-_market = MarketDataClient()
+_market = get_shared_market_client()
 
 
 @tool
@@ -53,12 +53,7 @@ async def _proactive_monitor(prev_snap_json: str = "") -> dict[str, Any]:
         client = get_shared_client()
         holdings_data = await client.get_portfolio_holdings()
 
-        # Normalise: Ghostfolio can return holdings as a list OR a dict keyed by symbol
-        raw = holdings_data.get("holdings", {})
-        if isinstance(raw, list):
-            holdings = {h.get("symbol", f"pos_{i}"): h for i, h in enumerate(raw)}
-        else:
-            holdings = raw or {}
+        holdings = normalize_holdings(holdings_data)
 
         if not holdings:
             return {
@@ -73,6 +68,9 @@ async def _proactive_monitor(prev_snap_json: str = "") -> dict[str, Any]:
         total_value = sum(
             h.get("valueInBaseCurrency", h.get("value", 0)) or 0 for h in holdings.values()
         )
+
+        if total_value <= 0:
+            return {"status": "empty", "message": "Portfolio has no value."}
 
         # ── Build current snapshot ─────────────────────────────────
         current_snapshot = {

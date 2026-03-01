@@ -13,7 +13,7 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from agent.clients.ghostfolio import GhostfolioError, get_shared_client
+from agent.clients.ghostfolio import GhostfolioError, get_shared_client, normalize_holdings
 
 
 @tool
@@ -62,12 +62,7 @@ async def _scorecard() -> dict[str, Any]:
         perf_data: dict = perf_result
         perf_1y: dict = perf_1y_result
 
-        # Normalise: Ghostfolio can return holdings as a list OR a dict keyed by symbol
-        raw = holdings_data.get("holdings", {})
-        if isinstance(raw, list):
-            holdings = {h.get("symbol", f"pos_{i}"): h for i, h in enumerate(raw)}
-        else:
-            holdings = raw or {}
+        holdings = normalize_holdings(holdings_data)
 
         if not holdings:
             return {
@@ -98,15 +93,18 @@ async def _scorecard() -> dict[str, Any]:
         for h in holdings.values():
             val = h.get("valueInBaseCurrency", h.get("value", 0)) or 0
             for s in h.get("sectors", []):
-                sectors[s["name"]] = sectors.get(s["name"], 0) + val * s.get("weight", 1)
+                sector_name = s.get("name", "Unknown")
+                sectors[sector_name] = sectors.get(sector_name, 0) + val * s.get("weight", 1)
             ac = h.get("assetClass", "EQUITY")
             asset_classes[ac] = asset_classes.get(ac, 0) + val
 
         max_sector_pct = max((v / total_value * 100 for v in sectors.values()), default=0)
 
         # v2 API returns a flat performance object — netPerformancePercentage is a decimal (0.12 = 12%)
-        ytd_return = perf_data.get("performance", {}).get("netPerformancePercentage", 0) * 100
-        one_y_return = perf_1y.get("performance", {}).get("netPerformancePercentage", 0) * 100
+        # Use `or 0` rather than a default of 0 so that explicit null values from Ghostfolio
+        # (key present but value is None) are also coerced to 0 instead of raising TypeError.
+        ytd_return = (perf_data.get("performance", {}).get("netPerformancePercentage") or 0) * 100
+        one_y_return = (perf_1y.get("performance", {}).get("netPerformancePercentage") or 0) * 100
 
         # ── Scoring (0-100) ────────────────────────────────────────
         score = 100
