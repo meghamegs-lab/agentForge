@@ -420,6 +420,9 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
     this.messages.push(streamingMsg);
     const streamingIdx = this.messages.length - 1;
 
+    // Scroll immediately so the loading bubble is visible before the fetch starts
+    setTimeout(() => this.scrollToBottom(), 0);
+
     try {
       const response = await fetch(`${this.fortioApiUrl}/api/chat/stream`, {
         method: 'POST',
@@ -500,6 +503,8 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
           msg.content += text;
           if (!this.isStreamingActive) {
             this.isStreamingActive = true;
+            // First token arrived — scroll so the response text is in view immediately
+            this.scrollToBottom();
           }
         }
         break;
