@@ -1,5 +1,5 @@
 """
-evalsNew/test_consistency_v2.py — Consistency Eval Suite (v2)
+evals/test_consistency.py — Consistency Eval Suite (v2)
 =============================================================
 Eval IDs: CON01–CON04
 
@@ -19,6 +19,7 @@ structurally stable, which is required for:
 
 All network calls are mocked with respx — zero real I/O.
 """
+
 from __future__ import annotations
 
 import httpx
@@ -48,6 +49,7 @@ def _auth():
 #          Both results must have identical structure and values.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_con01_portfolio_summary_is_idempotent():
     """
@@ -56,12 +58,28 @@ async def test_con01_portfolio_summary_is_idempotent():
     """
     holdings_mock = {
         "holdings": [
-            {"symbol": "AAPL", "name": "Apple Inc.", "quantity": 10,
-             "valueInBaseCurrency": 1750.00, "currency": "USD",
-             "assetClass": "EQUITY", "assetSubClass": "STOCK", "sectors": [], "countries": []},
-            {"symbol": "VTI", "name": "Vanguard Total Stock Market ETF", "quantity": 20,
-             "valueInBaseCurrency": 4200.00, "currency": "USD",
-             "assetClass": "EQUITY", "assetSubClass": "ETF", "sectors": [], "countries": []},
+            {
+                "symbol": "AAPL",
+                "name": "Apple Inc.",
+                "quantity": 10,
+                "valueInBaseCurrency": 1750.00,
+                "currency": "USD",
+                "assetClass": "EQUITY",
+                "assetSubClass": "STOCK",
+                "sectors": [],
+                "countries": [],
+            },
+            {
+                "symbol": "VTI",
+                "name": "Vanguard Total Stock Market ETF",
+                "quantity": 20,
+                "valueInBaseCurrency": 4200.00,
+                "currency": "USD",
+                "assetClass": "EQUITY",
+                "assetSubClass": "ETF",
+                "sectors": [],
+                "countries": [],
+            },
         ]
     }
 
@@ -141,6 +159,7 @@ async def test_con01_performance_is_idempotent():
 #          must always be sorted from highest to lowest value.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_con02_holdings_sorted_by_value_descending():
     """
@@ -149,23 +168,58 @@ async def test_con02_holdings_sorted_by_value_descending():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
-        return_value=httpx.Response(200, json={
-            "holdings": [
-                # Deliberately in wrong order to test sorting
-                {"symbol": "AMZN", "name": "Amazon", "quantity": 3,
-                 "valueInBaseCurrency": 520.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "STOCK", "sectors": [], "countries": []},
-                {"symbol": "AAPL", "name": "Apple Inc.", "quantity": 10,
-                 "valueInBaseCurrency": 1750.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "STOCK", "sectors": [], "countries": []},
-                {"symbol": "VTI", "name": "Vanguard Total Stock Market ETF", "quantity": 20,
-                 "valueInBaseCurrency": 4200.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "ETF", "sectors": [], "countries": []},
-                {"symbol": "MSFT", "name": "Microsoft Corporation", "quantity": 5,
-                 "valueInBaseCurrency": 2050.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "STOCK", "sectors": [], "countries": []},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "holdings": [
+                    # Deliberately in wrong order to test sorting
+                    {
+                        "symbol": "AMZN",
+                        "name": "Amazon",
+                        "quantity": 3,
+                        "valueInBaseCurrency": 520.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "AAPL",
+                        "name": "Apple Inc.",
+                        "quantity": 10,
+                        "valueInBaseCurrency": 1750.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "VTI",
+                        "name": "Vanguard Total Stock Market ETF",
+                        "quantity": 20,
+                        "valueInBaseCurrency": 4200.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "ETF",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "MSFT",
+                        "name": "Microsoft Corporation",
+                        "quantity": 5,
+                        "valueInBaseCurrency": 2050.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                ]
+            },
+        )
     )
     result = await _get_portfolio_summary()
     holdings = result["holdings"]
@@ -182,7 +236,7 @@ async def test_con02_holdings_sorted_by_value_descending():
         assert holdings[i]["current_value"] >= holdings[i + 1]["current_value"], (
             f"CON02: Sort order violation at index {i}: "
             f"{holdings[i]['symbol']}={holdings[i]['current_value']} < "
-            f"{holdings[i+1]['symbol']}={holdings[i+1]['current_value']}"
+            f"{holdings[i + 1]['symbol']}={holdings[i + 1]['current_value']}"
         )
 
 
@@ -194,19 +248,46 @@ async def test_con02_sort_stable_for_equal_values():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
-        return_value=httpx.Response(200, json={
-            "holdings": [
-                {"symbol": "A1", "name": "Asset One", "quantity": 5,
-                 "valueInBaseCurrency": 1000.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "STOCK", "sectors": [], "countries": []},
-                {"symbol": "A2", "name": "Asset Two", "quantity": 5,
-                 "valueInBaseCurrency": 1000.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "STOCK", "sectors": [], "countries": []},
-                {"symbol": "A3", "name": "Asset Three", "quantity": 5,
-                 "valueInBaseCurrency": 2000.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "STOCK", "sectors": [], "countries": []},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "holdings": [
+                    {
+                        "symbol": "A1",
+                        "name": "Asset One",
+                        "quantity": 5,
+                        "valueInBaseCurrency": 1000.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "A2",
+                        "name": "Asset Two",
+                        "quantity": 5,
+                        "valueInBaseCurrency": 1000.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "A3",
+                        "name": "Asset Three",
+                        "quantity": 5,
+                        "valueInBaseCurrency": 2000.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                ]
+            },
+        )
     )
     result = await _get_portfolio_summary()
     holdings = result["holdings"]
@@ -226,6 +307,7 @@ async def test_con02_sort_stable_for_equal_values():
 #          recent transaction is always at index 0.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_con03_transactions_sorted_newest_first():
     """
@@ -234,23 +316,50 @@ async def test_con03_transactions_sorted_newest_first():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/order").mock(
-        return_value=httpx.Response(200, json={
-            "activities": [
-                # Intentionally oldest first to test the sort
-                {"id": "tx-001", "date": "2024-01-10T00:00:00.000Z", "type": "BUY",
-                 "SymbolProfile": {"symbol": "MSFT", "name": "Microsoft"},
-                 "quantity": 5, "unitPrice": 400.00, "fee": 4.99, "currency": "USD",
-                 "account": {"name": "Brokerage"}},
-                {"id": "tx-002", "date": "2024-06-01T00:00:00.000Z", "type": "BUY",
-                 "SymbolProfile": {"symbol": "VTI", "name": "Vanguard Total Stock Market ETF"},
-                 "quantity": 20, "unitPrice": 210.00, "fee": 0.00, "currency": "USD",
-                 "account": {"name": "Brokerage"}},
-                {"id": "tx-003", "date": "2024-09-01T00:00:00.000Z", "type": "DIVIDEND",
-                 "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
-                 "quantity": 10, "unitPrice": 0.25, "fee": 0.00, "currency": "USD",
-                 "account": {"name": "Brokerage"}},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "activities": [
+                    # Intentionally oldest first to test the sort
+                    {
+                        "id": "tx-001",
+                        "date": "2024-01-10T00:00:00.000Z",
+                        "type": "BUY",
+                        "SymbolProfile": {"symbol": "MSFT", "name": "Microsoft"},
+                        "quantity": 5,
+                        "unitPrice": 400.00,
+                        "fee": 4.99,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                    {
+                        "id": "tx-002",
+                        "date": "2024-06-01T00:00:00.000Z",
+                        "type": "BUY",
+                        "SymbolProfile": {
+                            "symbol": "VTI",
+                            "name": "Vanguard Total Stock Market ETF",
+                        },
+                        "quantity": 20,
+                        "unitPrice": 210.00,
+                        "fee": 0.00,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                    {
+                        "id": "tx-003",
+                        "date": "2024-09-01T00:00:00.000Z",
+                        "type": "DIVIDEND",
+                        "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
+                        "quantity": 10,
+                        "unitPrice": 0.25,
+                        "fee": 0.00,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                ]
+            },
+        )
     )
     result = await _get_transactions()
 
@@ -276,19 +385,46 @@ async def test_con03_sort_correct_with_same_day_transactions():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/order").mock(
-        return_value=httpx.Response(200, json={
-            "activities": [
-                {"id": "same-day-a", "date": "2024-07-04T10:00:00.000Z", "type": "BUY",
-                 "SymbolProfile": {"symbol": "AAPL"}, "quantity": 5, "unitPrice": 180.00,
-                 "fee": 0.00, "currency": "USD", "account": {"name": "Brokerage"}},
-                {"id": "same-day-b", "date": "2024-07-04T14:00:00.000Z", "type": "SELL",
-                 "SymbolProfile": {"symbol": "AAPL"}, "quantity": 3, "unitPrice": 181.00,
-                 "fee": 0.00, "currency": "USD", "account": {"name": "Brokerage"}},
-                {"id": "older-tx", "date": "2024-01-15T00:00:00.000Z", "type": "BUY",
-                 "SymbolProfile": {"symbol": "VTI"}, "quantity": 10, "unitPrice": 210.00,
-                 "fee": 0.00, "currency": "USD", "account": {"name": "Brokerage"}},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "activities": [
+                    {
+                        "id": "same-day-a",
+                        "date": "2024-07-04T10:00:00.000Z",
+                        "type": "BUY",
+                        "SymbolProfile": {"symbol": "AAPL"},
+                        "quantity": 5,
+                        "unitPrice": 180.00,
+                        "fee": 0.00,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                    {
+                        "id": "same-day-b",
+                        "date": "2024-07-04T14:00:00.000Z",
+                        "type": "SELL",
+                        "SymbolProfile": {"symbol": "AAPL"},
+                        "quantity": 3,
+                        "unitPrice": 181.00,
+                        "fee": 0.00,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                    {
+                        "id": "older-tx",
+                        "date": "2024-01-15T00:00:00.000Z",
+                        "type": "BUY",
+                        "SymbolProfile": {"symbol": "VTI"},
+                        "quantity": 10,
+                        "unitPrice": 210.00,
+                        "fee": 0.00,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                ]
+            },
+        )
     )
     result = await _get_transactions()
     transactions = result["transactions"]
@@ -306,6 +442,7 @@ async def test_con03_sort_correct_with_same_day_transactions():
 #          with 0.0 — never omit fields because the value happens to be falsy.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_con04_required_fields_present_when_performance_is_zero():
     """
@@ -314,15 +451,18 @@ async def test_con04_required_fields_present_when_performance_is_zero():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
-        return_value=httpx.Response(200, json={
-            "performance": {
-                "netPerformancePercentage": 0.0,
-                "netPerformance": 0.0,
-                "currentValueInBaseCurrency": 8000.00,
-                "totalInvestment": 8000.00,
-                "currentNetWorth": 8000.00,
-            }
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "performance": {
+                    "netPerformancePercentage": 0.0,
+                    "netPerformance": 0.0,
+                    "currentValueInBaseCurrency": 8000.00,
+                    "totalInvestment": 8000.00,
+                    "currentNetWorth": 8000.00,
+                }
+            },
+        )
     )
     result = await _get_performance("1d")
 
@@ -334,8 +474,13 @@ async def test_con04_required_fields_present_when_performance_is_zero():
         )
 
     # Required performance sub-keys — all must exist even if value is 0.0
-    required_perf = ["relative_change_pct", "absolute_change", "current_value",
-                     "total_investment", "net_worth"]
+    required_perf = [
+        "relative_change_pct",
+        "absolute_change",
+        "current_value",
+        "total_investment",
+        "net_worth",
+    ]
     for key in required_perf:
         assert key in result["performance"], (
             f"CON04: Required performance key '{key}' missing when value is 0.0"
@@ -348,6 +493,4 @@ async def test_con04_required_fields_present_when_performance_is_zero():
     assert result["performance"]["absolute_change"] == 0.0, (
         "CON04: absolute_change must be 0.0 (not omitted or None)"
     )
-    assert result["status"] == "ok", (
-        "CON04: Zero performance must still return status='ok'"
-    )
+    assert result["status"] == "ok", "CON04: Zero performance must still return status='ok'"

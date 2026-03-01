@@ -8,6 +8,7 @@ so these tests run purely in the async test environment.
 All yfinance.Ticker instances are patched with MagicMock — no real
 network calls are made.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -38,8 +39,8 @@ def _mock_ticker(price: float | None = 175.32) -> MagicMock:
 
 # ── get_quote (single symbol) ────────────────────────────────────────────────
 
-class TestGetQuote:
 
+class TestGetQuote:
     async def test_ok_status_for_valid_symbol(self):
         with patch("yfinance.Ticker", return_value=_mock_ticker(175.32)):
             result = await MarketDataClient().get_quote("AAPL")
@@ -99,9 +100,7 @@ class TestGetQuote:
                 result = await MarketDataClient().get_quote("AAPL")
                 assert isinstance(result, dict)
             except Exception as exc:
-                pytest.fail(
-                    f"get_quote raised instead of returning a safe dict: {exc}"
-                )
+                pytest.fail(f"get_quote raised instead of returning a safe dict: {exc}")
 
     async def test_currency_from_fast_info(self):
         ticker = _mock_ticker(300.0)
@@ -113,8 +112,8 @@ class TestGetQuote:
 
 # ── get_batch_quotes (multiple symbols) ──────────────────────────────────────
 
-class TestGetBatchQuotes:
 
+class TestGetBatchQuotes:
     async def test_all_symbols_present_in_quotes_dict(self):
         with patch("yfinance.Ticker", return_value=_mock_ticker(100.0)):
             result = await MarketDataClient().get_batch_quotes(["AAPL", "MSFT", "VTI"])
@@ -135,6 +134,7 @@ class TestGetBatchQuotes:
 
     async def test_mixed_valid_and_invalid_symbols(self):
         """Batch must succeed even if some symbols are unavailable."""
+
         def _side_effect(symbol: str, **_: object) -> MagicMock:
             if symbol == "AAPL":
                 return _mock_ticker(175.0)

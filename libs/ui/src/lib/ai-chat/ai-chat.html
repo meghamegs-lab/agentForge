@@ -36,10 +36,10 @@
       <div class="gf-ai-chat-header-actions">
         <button
           class="header-action-btn"
-          matTooltip="Clear"
+          matTooltip="Clear history"
           (click)="startNewChat()"
         >
-          ➕
+          🗑️
         </button>
         <button mat-icon-button (click)="closePanel()">
           <span class="icon-symbol">✕</span>
@@ -63,14 +63,27 @@
           }
 
           <div class="message-body">
-            <!-- Message text (with blinking cursor while streaming) -->
+            <!-- Message text: shows "thinking" spinner before first token arrives,
+                 then transitions to live streamed content — all in the same bubble. -->
             <div
               class="message-bubble"
-              [class.streaming-bubble]="message.isStreaming"
+              [class.loading-bubble]="message.isStreaming && !message.content"
+              [class.streaming-bubble]="
+                message.isStreaming && !!message.content
+              "
             >
-              {{ message.content }}
-              @if (message.isStreaming) {
-                <span aria-hidden="true" class="streaming-cursor"></span>
+              @if (message.isStreaming && !message.content) {
+                <mat-progress-spinner
+                  diameter="18"
+                  mode="indeterminate"
+                  strokeWidth="2"
+                />
+                <span>Fortio is thinking...</span>
+              } @else {
+                {{ message.content }}
+                @if (message.isStreaming) {
+                  <span aria-hidden="true" class="streaming-cursor"></span>
+                }
               }
             </div>
 
@@ -164,26 +177,6 @@
                 }}</pre>
               </div>
             }
-          </div>
-        </div>
-      }
-
-      <!-- Loading spinner — only shown BEFORE the first token arrives.
-           Once streaming starts, the in-place streaming message takes over. -->
-      @if (isLoading && !isStreamingActive) {
-        <div class="message message-assistant">
-          <div class="message-avatar">
-            <span class="avatar-label">AI</span>
-          </div>
-          <div class="message-body">
-            <div class="message-bubble loading-bubble">
-              <mat-progress-spinner
-                diameter="18"
-                mode="indeterminate"
-                strokeWidth="2"
-              />
-              <span>Fortio is thinking...</span>
-            </div>
           </div>
         </div>
       }

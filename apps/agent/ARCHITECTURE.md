@@ -80,6 +80,11 @@ analysis is inherently **multi-step and stateful**:
   an extra tool call.
 - **LLM:** `claude-haiku-4-5` primary (`temperature=0`); `gpt-4o-mini` fallback. Both
   are bound with all 11 tools at module import time — never rebuilt per-request.
+- **History redaction:** Before each LLM invocation, `_redact_prior_tool_messages()`
+  strips the financial data payload out of `ToolMessage`s from prior turns, replacing
+  them with a `[Stale tool result — call the tool again]` placeholder. This forces the
+  LLM to re-fetch live data each turn instead of reading stale numbers from history,
+  which prevents `POTENTIAL_HALLUCINATION` flags on multi-turn conversations.
 - **Checkpointing:** FastAPI uses `AsyncPostgresSaver` (Railway Postgres); CLI uses
   `MemorySaver`. `thread_id = conversation_id` links turns.
 
@@ -150,19 +155,19 @@ response text + tool_results
 
 | Suite                     | File                                     | Tests  | What it covers                                         |
 | ------------------------- | ---------------------------------------- | ------ | ------------------------------------------------------ |
-| Unit — API schemas        | `tests/unit/api/`                        | 19     | Pydantic schema validation                             |
-| Unit — Ghostfolio client  | `tests/unit/clients/`                    | 16     | HTTP mocking, auth, retry                              |
-| Unit — Market client      | `tests/unit/clients/`                    | 10     | yfinance mocking, retry, fallback                      |
-| Unit — Graph routing      | `tests/unit/graph/`                      | 28     | Routing logic, context extraction                      |
-| Unit — Tools              | `tests/unit/tools/`                      | 19     | Tool output shapes, edge cases                         |
-| Unit — Verification       | `tests/unit/verification/`               | 21     | All 5 pipeline stages                                  |
-| Eval — Correctness        | `tests/evals/test_correctness.py`        | 12     | Math accuracy (%, sorts, sums, sector rollup)          |
-| Eval — Tool selection     | `tests/evals/test_tool_selection.py`     | 10     | Docstring trigger keywords, domain boundary            |
-| Eval — LLM tool selection | `tests/evals/test_llm_tool_selection.py` | 14     | LLM-driven tool routing, keyword coverage              |
-| Eval — Tool execution     | `tests/evals/test_tool_execution.py`     | 16     | Advanced tool happy path + error cases                 |
-| Eval — Multi-step         | `tests/evals/test_multi_step.py`         | 12     | Cross-tool data consistency                            |
-| Eval — Edge cases         | `tests/evals/test_edge_cases.py`         | 10     | Unicode, empty portfolio, bad input                    |
-| Eval — **Adversarial**    | `tests/evals/test_adversarial.py`        | **12** | Prompt injection, jailbreaks, fabricated numbers       |
+| Unit — API schemas        | `tests/unit/api/`                        | 30     | Pydantic schema validation                             |
+| Unit — Clients            | `tests/unit/clients/`                    | 54     | HTTP mocking, auth, retry (Ghostfolio + market)        |
+| Unit — Graph routing      | `tests/unit/graph/`                      | 53     | Routing logic, context extraction, history redaction   |
+| Unit — Tools              | `tests/unit/tools/`                      | 31     | Tool output shapes, edge cases                         |
+| Unit — Verification       | `tests/unit/verification/`               | 43     | All 5 pipeline stages                                  |
+| Eval — Correctness        | `tests/evals/test_correctness.py`        | 11     | Math accuracy (%, sorts, sums, sector rollup)          |
+| Eval — Tool selection     | `tests/evals/test_tool_selection.py`     | 28     | Docstring trigger keywords, domain boundary            |
+| Eval — LLM tool selection | `tests/evals/test_llm_tool_selection.py` | 16     | LLM-driven tool routing, keyword coverage              |
+| Eval — Tool execution     | `tests/evals/test_tool_execution.py`     | 12     | Advanced tool happy path + error cases                 |
+| Eval — Multi-step         | `tests/evals/test_multi_step.py`         | 19     | Cross-tool data consistency                            |
+| Eval — Edge cases         | `tests/evals/test_edge_cases.py`         | 28     | Unicode, empty portfolio, bad input                    |
+| Eval — **Adversarial**    | `tests/evals/test_adversarial.py`        | **29** | Prompt injection, jailbreaks, fabricated numbers       |
+| Eval — Safety             | `tests/evals/test_safety.py`             | 19     | Disclaimer, hallucination guard, confidence scoring    |
 | Adversarial (standalone)  | `tests/adversarial/test_adversarial.py`  | —      | Safety / off-topic deflection (separate suite)         |
 | LangSmith Experiments     | `tests/evals/ls_evals.py`                | 23     | Correctness, safety, latency, consistency scored evals |
 
@@ -188,25 +193,26 @@ python tests/evals/ls_evals.py --only safety
 python tests/evals/ls_evals.py --prefix feat/my-branch
 ```
 
-### Results (as of Feb 27, 2026)
+### Results (as of Mar 1, 2026)
 
 ```
-223 passed in 10.68s     (unit + eval combined)
-Coverage: 88.66% (total)   ← well above 40% required threshold
+277 passed in 15.28s     (unit + eval combined, excluding LLM-live tests)
+Coverage: 83.20% (total)   ← well above 40% required threshold
 ```
 
-**All 223 tests pass. Zero failures.**
+**All 277 tests pass. Zero failures.**
 
 ### Notable Findings During Development
 
-| Bug found by tests                     | Root cause                                                                                                               | Fix                                              |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
-| Performance tool always returned 0 %   | Ghostfolio v2 returns flat `netPerformancePercentage`, not nested `ytd.relativeChange`                                   | Rewrote parser to flat structure                 |
-| 6 tools computed portfolio value as $0 | Field named `valueInBaseCurrency` not `value`                                                                            | Updated all 6 tools                              |
-| Transaction account always empty       | `"Account"` (capital A) vs `"account"` (lowercase)                                                                       | Fixed field name                                 |
-| Market data tests crashed              | `get_market_data` is async; tests used sync `.invoke()`                                                                  | Changed to `async def` + `.ainvoke()`            |
-| `yfinance` intermittently empty        | Market closed; `history(period="1d")` returns nothing                                                                    | Added `"5d"` fallback + 3-attempt tenacity retry |
-| Test asserted wrong severity           | `POTENTIAL_HALLUCINATION` only fires when _no_ tools ran or _all_ failed; successful-tool path emits `UNSUPPORTED_CLAIM` | Updated test assertions                          |
+| Bug found by tests                           | Root cause                                                                                                                          | Fix                                                                                                  |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Performance tool always returned 0 %         | Ghostfolio v2 returns flat `netPerformancePercentage`, not nested `ytd.relativeChange`                                              | Rewrote parser to flat structure                                                                     |
+| 6 tools computed portfolio value as $0       | Field named `valueInBaseCurrency` not `value`                                                                                       | Updated all 6 tools                                                                                  |
+| Transaction account always empty             | `"Account"` (capital A) vs `"account"` (lowercase)                                                                                  | Fixed field name                                                                                     |
+| Market data tests crashed                    | `get_market_data` is async; tests used sync `.invoke()`                                                                             | Changed to `async def` + `.ainvoke()`                                                                |
+| `yfinance` intermittently empty              | Market closed; `history(period="1d")` returns nothing                                                                               | Added `"5d"` fallback + 3-attempt tenacity retry                                                     |
+| Test asserted wrong severity                 | `POTENTIAL_HALLUCINATION` only fires when _no_ tools ran or _all_ failed; successful-tool path emits `UNSUPPORTED_CLAIM`            | Updated test assertions                                                                              |
+| `POTENTIAL_HALLUCINATION` on multi-turn prod | In production (persistent history), the LLM read stale financial numbers from prior-turn `ToolMessage`s instead of re-calling tools | Added `_redact_prior_tool_messages()` in `graph.py` to strip prior-turn tool data before LLM context |
 
 ---
 

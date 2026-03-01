@@ -1,5 +1,5 @@
 """
-evalsNew/test_correctness_v2.py — Correctness Eval Suite (v2)
+evals/test_correctness.py — Correctness Eval Suite (v2)
 ==============================================================
 Eval IDs: C01–C07
 
@@ -21,22 +21,21 @@ Tolerances:
 
 All network calls are mocked with respx — zero real I/O.
 """
+
 from __future__ import annotations
 
 import httpx
-import pytest
 import respx
 
 from agent.config import settings
 from agent.tools.diversification import _analyze_diversification
 from agent.tools.performance import _get_performance
 from agent.tools.portfolio import _get_portfolio_summary
-from agent.tools.transactions import _get_transactions
 
 BASE_URL = settings.ghostfolio_base_url.rstrip("/")
 AUTH_RESP = {"authToken": "correctness-v2-token"}
 
-PCT_TOLERANCE = 0.01   # ±0.01 percentage points
+PCT_TOLERANCE = 0.01  # ±0.01 percentage points
 DOLLAR_TOLERANCE = 0.01  # ±$0.01
 
 
@@ -52,6 +51,7 @@ def _auth():
 #        The tool must multiply by 100 and round to 2dp before returning.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_c01_ytd_fraction_to_pct_conversion():
     """
@@ -60,16 +60,19 @@ async def test_c01_ytd_fraction_to_pct_conversion():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
-        return_value=httpx.Response(200, json={
-            "performance": {
-                "netPerformancePercentage": 0.1234,
-                "netPerformance": 987.65,
-                "currentValueInBaseCurrency": 8987.65,
-                "totalInvestment": 8000.00,
-                "currentNetWorth": 8987.65,
+        return_value=httpx.Response(
+            200,
+            json={
+                "performance": {
+                    "netPerformancePercentage": 0.1234,
+                    "netPerformance": 987.65,
+                    "currentValueInBaseCurrency": 8987.65,
+                    "totalInvestment": 8000.00,
+                    "currentNetWorth": 8987.65,
+                },
+                "hasErrors": False,
             },
-            "hasErrors": False,
-        })
+        )
     )
     result = await _get_performance("ytd")
 
@@ -95,6 +98,7 @@ async def test_c01_ytd_fraction_to_pct_conversion():
 #        The top-3 are: VTI($4200) > MSFT($2050) > AAPL($1750). AMZN($520) is 4th.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_c02_top_3_contributors_by_value():
     """
@@ -103,23 +107,58 @@ async def test_c02_top_3_contributors_by_value():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
-        return_value=httpx.Response(200, json={
-            "holdings": [
-                # Intentionally unsorted to test the sort
-                {"symbol": "AAPL", "name": "Apple Inc.", "quantity": 10,
-                 "valueInBaseCurrency": 1750.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "STOCK", "sectors": [], "countries": []},
-                {"symbol": "AMZN", "name": "Amazon.com Inc.", "quantity": 3,
-                 "valueInBaseCurrency": 520.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "STOCK", "sectors": [], "countries": []},
-                {"symbol": "VTI", "name": "Vanguard Total Stock Market ETF", "quantity": 20,
-                 "valueInBaseCurrency": 4200.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "ETF", "sectors": [], "countries": []},
-                {"symbol": "MSFT", "name": "Microsoft Corporation", "quantity": 5,
-                 "valueInBaseCurrency": 2050.00, "currency": "USD",
-                 "assetClass": "EQUITY", "assetSubClass": "STOCK", "sectors": [], "countries": []},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "holdings": [
+                    # Intentionally unsorted to test the sort
+                    {
+                        "symbol": "AAPL",
+                        "name": "Apple Inc.",
+                        "quantity": 10,
+                        "valueInBaseCurrency": 1750.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "AMZN",
+                        "name": "Amazon.com Inc.",
+                        "quantity": 3,
+                        "valueInBaseCurrency": 520.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "VTI",
+                        "name": "Vanguard Total Stock Market ETF",
+                        "quantity": 20,
+                        "valueInBaseCurrency": 4200.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "ETF",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "MSFT",
+                        "name": "Microsoft Corporation",
+                        "quantity": 5,
+                        "valueInBaseCurrency": 2050.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                ]
+            },
+        )
     )
     result = await _get_portfolio_summary()
 
@@ -131,16 +170,14 @@ async def test_c02_top_3_contributors_by_value():
     assert top_3_symbols == ["VTI", "MSFT", "AAPL"], (
         f"C02: Top 3 by value must be ['VTI','MSFT','AAPL'], got {top_3_symbols}"
     )
-    assert holdings[3]["symbol"] == "AMZN", (
-        "C02: AMZN must be 4th (smallest value $520)"
-    )
+    assert holdings[3]["symbol"] == "AMZN", "C02: AMZN must be 4th (smallest value $520)"
 
     # Verify the values are in strictly descending order
     for i in range(len(holdings) - 1):
         assert holdings[i]["current_value"] >= holdings[i + 1]["current_value"], (
             f"C02: Holdings not sorted descending: "
             f"{holdings[i]['symbol']}={holdings[i]['current_value']} < "
-            f"{holdings[i+1]['symbol']}={holdings[i+1]['current_value']}"
+            f"{holdings[i + 1]['symbol']}={holdings[i + 1]['current_value']}"
         )
 
 
@@ -149,6 +186,7 @@ async def test_c02_top_3_contributors_by_value():
 #        analyze_diversification rolls up weighted sector exposure per holding.
 #        The sum of sector percentages across all sectors must equal 100 ± 0.5%.
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @respx.mock
 async def test_c03_sector_allocation_sums_to_100(holdings_standard):
@@ -185,6 +223,7 @@ async def test_c03_sector_allocation_sums_to_100(holdings_standard):
 #        gross_return = $987.65 (from performance mock)
 #        fee_drag_pct = 14.97 / 987.65 * 100 = 1.515...% → ≈ 1.52%
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @respx.mock
 async def test_c04_fee_drag_arithmetic(orders_with_fees, performance_ytd, holdings_standard):
@@ -233,6 +272,7 @@ async def test_c04_fee_drag_arithmetic(orders_with_fees, performance_ytd, holdin
 #        difference between current_value and total_investment in the tool output.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_c05_net_pnl_arithmetic_identity():
     """
@@ -242,15 +282,18 @@ async def test_c05_net_pnl_arithmetic_identity():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
-        return_value=httpx.Response(200, json={
-            "performance": {
-                "netPerformancePercentage": 0.1500,
-                "netPerformance": 1200.00,
-                "currentValueInBaseCurrency": 9200.00,
-                "totalInvestment": 8000.00,
-                "currentNetWorth": 9200.00,
-            }
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "performance": {
+                    "netPerformancePercentage": 0.1500,
+                    "netPerformance": 1200.00,
+                    "currentValueInBaseCurrency": 9200.00,
+                    "totalInvestment": 8000.00,
+                    "currentNetWorth": 9200.00,
+                }
+            },
+        )
     )
     result = await _get_performance("max")
 
@@ -280,6 +323,7 @@ async def test_c05_net_pnl_arithmetic_identity():
 #        Verify the tool rolls up asset_class correctly using valueInBaseCurrency.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_c06_asset_class_breakdown_aggregation():
     """
@@ -289,16 +333,37 @@ async def test_c06_asset_class_breakdown_aggregation():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
-        return_value=httpx.Response(200, json={
-            "holdings": [
-                {"symbol": "AAPL", "valueInBaseCurrency": 1750.00, "assetClass": "EQUITY",
-                 "assetSubClass": "STOCK", "sectors": [], "countries": []},
-                {"symbol": "MSFT", "valueInBaseCurrency": 2050.00, "assetClass": "EQUITY",
-                 "assetSubClass": "STOCK", "sectors": [], "countries": []},
-                {"symbol": "VTI",  "valueInBaseCurrency": 4200.00, "assetClass": "EQUITY",
-                 "assetSubClass": "ETF",   "sectors": [], "countries": []},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "holdings": [
+                    {
+                        "symbol": "AAPL",
+                        "valueInBaseCurrency": 1750.00,
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "MSFT",
+                        "valueInBaseCurrency": 2050.00,
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "VTI",
+                        "valueInBaseCurrency": 4200.00,
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "ETF",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                ]
+            },
+        )
     )
     result = await _analyze_diversification()
 
@@ -322,6 +387,7 @@ async def test_c06_asset_class_breakdown_aggregation():
 #        Total base: $8350. USD% ≈ 71.26%, EUR% ≈ 28.74%.
 #        The tool must use valueInBaseCurrency, NOT the local-currency value.
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @respx.mock
 async def test_c07_multicurrency_uses_base_currency_values(holdings_multi_currency):
@@ -361,6 +427,4 @@ async def test_c07_multicurrency_uses_base_currency_values(holdings_multi_curren
     # USD total (AAPL + VTI) = 5950 / 8350 * 100 ≈ 71.26%
     usd_holdings = [h for h in result["holdings"] if h.get("currency") == "USD"]
     usd_total = sum(h["current_value"] for h in usd_holdings)
-    assert abs(usd_total - 5950.00) <= DOLLAR_TOLERANCE, (
-        f"C07: USD total={usd_total} ≠ 5950.00"
-    )
+    assert abs(usd_total - 5950.00) <= DOLLAR_TOLERANCE, f"C07: USD total={usd_total} ≠ 5950.00"

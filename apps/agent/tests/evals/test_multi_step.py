@@ -1,5 +1,5 @@
 """
-evalsNew/test_multi_step_v2.py — Multi-Step Reasoning Eval Suite (v2)
+evals/test_multi_step.py — Multi-Step Reasoning Eval Suite (v2)
 ======================================================================
 Eval IDs: MS01–MS12
 
@@ -23,6 +23,7 @@ Multi-step scenarios covered:
 All tests mock network calls with respx — zero real I/O.
 Ghostfolio performance API: v2 flat format (no nested period keys).
 """
+
 from __future__ import annotations
 
 import json
@@ -51,16 +52,26 @@ AUTH_RESP = {"authToken": "multi-step-v2-token"}
 
 HOLDINGS_LIST = [
     {
-        "symbol": "AAPL", "name": "Apple Inc.", "quantity": 10, "value": 1750.00,
-        "valueInBaseCurrency": 1750.00, "currency": "USD",
-        "assetClass": "EQUITY", "assetSubClass": "STOCK",
+        "symbol": "AAPL",
+        "name": "Apple Inc.",
+        "quantity": 10,
+        "value": 1750.00,
+        "valueInBaseCurrency": 1750.00,
+        "currency": "USD",
+        "assetClass": "EQUITY",
+        "assetSubClass": "STOCK",
         "sectors": [{"name": "Technology", "weight": 1.0}],
         "countries": [{"name": "United States", "weight": 1.0}],
     },
     {
-        "symbol": "VTI", "name": "Vanguard Total Stock Market ETF",
-        "quantity": 20, "value": 4200.00, "valueInBaseCurrency": 4200.00,
-        "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "ETF",
+        "symbol": "VTI",
+        "name": "Vanguard Total Stock Market ETF",
+        "quantity": 20,
+        "value": 4200.00,
+        "valueInBaseCurrency": 4200.00,
+        "currency": "USD",
+        "assetClass": "EQUITY",
+        "assetSubClass": "ETF",
         "sectors": [
             {"name": "Technology", "weight": 0.30},
             {"name": "Healthcare", "weight": 0.13},
@@ -72,9 +83,14 @@ HOLDINGS_LIST = [
         "countries": [{"name": "United States", "weight": 1.0}],
     },
     {
-        "symbol": "MSFT", "name": "Microsoft Corporation",
-        "quantity": 5, "value": 2050.00, "valueInBaseCurrency": 2050.00,
-        "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
+        "symbol": "MSFT",
+        "name": "Microsoft Corporation",
+        "quantity": 5,
+        "value": 2050.00,
+        "valueInBaseCurrency": 2050.00,
+        "currency": "USD",
+        "assetClass": "EQUITY",
+        "assetSubClass": "STOCK",
         "sectors": [{"name": "Technology", "weight": 1.0}],
         "countries": [{"name": "United States", "weight": 1.0}],
     },
@@ -83,21 +99,36 @@ HOLDINGS_LIST = [
 ORDERS_DATA = {
     "activities": [
         {
-            "id": "tx1", "date": "2024-01-15T00:00:00Z", "type": "BUY",
+            "id": "tx1",
+            "date": "2024-01-15T00:00:00Z",
+            "type": "BUY",
             "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
-            "quantity": 10, "unitPrice": 170.00, "fee": 4.99, "currency": "USD",
+            "quantity": 10,
+            "unitPrice": 170.00,
+            "fee": 4.99,
+            "currency": "USD",
             "account": {"name": "Brokerage"},
         },
         {
-            "id": "tx2", "date": "2024-02-20T00:00:00Z", "type": "BUY",
+            "id": "tx2",
+            "date": "2024-02-20T00:00:00Z",
+            "type": "BUY",
             "SymbolProfile": {"symbol": "VTI", "name": "Vanguard ETF"},
-            "quantity": 20, "unitPrice": 210.00, "fee": 0.00, "currency": "USD",
+            "quantity": 20,
+            "unitPrice": 210.00,
+            "fee": 0.00,
+            "currency": "USD",
             "account": {"name": "Brokerage"},
         },
         {
-            "id": "tx3", "date": "2024-04-10T00:00:00Z", "type": "SELL",
+            "id": "tx3",
+            "date": "2024-04-10T00:00:00Z",
+            "type": "SELL",
             "SymbolProfile": {"symbol": "MSFT", "name": "Microsoft"},
-            "quantity": 2, "unitPrice": 410.00, "fee": 2.50, "currency": "USD",
+            "quantity": 2,
+            "unitPrice": 410.00,
+            "fee": 2.50,
+            "currency": "USD",
             "account": {"name": "Brokerage"},
         },
     ]
@@ -135,14 +166,13 @@ def _mock_performance():
 
 
 def _mock_orders():
-    respx.get(f"{BASE_URL}/api/v1/order").mock(
-        return_value=httpx.Response(200, json=ORDERS_DATA)
-    )
+    respx.get(f"{BASE_URL}/api/v1/order").mock(return_value=httpx.Response(200, json=ORDERS_DATA))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MS01 — Portfolio summary → fee drag: gross = net + fees identity
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @respx.mock
 async def test_ms01_portfolio_and_fee_drag_identity():
@@ -178,6 +208,7 @@ async def test_ms01_portfolio_and_fee_drag_identity():
 # MS02 — Holdings → diversification: sectors match holding sector data
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_ms02_holdings_and_diversification_sectors_consistent():
     """
@@ -209,6 +240,7 @@ async def test_ms02_holdings_and_diversification_sectors_consistent():
 # MS03 — Holdings → rebalancing: every trade symbol exists in holdings
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_ms03_rebalancing_trades_only_contain_holdings_symbols():
     """
@@ -220,6 +252,7 @@ async def test_ms03_rebalancing_trades_only_contain_holdings_symbols():
     _mock_holdings()
 
     import agent.tools.rebalancing as reb_module
+
     with patch.object(reb_module._market, "get_quote", new_callable=AsyncMock) as mock_q:
         mock_q.return_value = {"status": "ok", "current_price": 175.00}
         plan = await _rebalancing_plan(0.55, 0.25, 0.15, 0.05)
@@ -237,6 +270,7 @@ async def test_ms03_rebalancing_trades_only_contain_holdings_symbols():
 # ══════════════════════════════════════════════════════════════════════════════
 # MS04 — Holdings → market context: analysed positions are real holdings
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @respx.mock
 async def test_ms04_market_context_positions_are_subset_of_holdings():
@@ -261,6 +295,7 @@ async def test_ms04_market_context_positions_are_subset_of_holdings():
 # ══════════════════════════════════════════════════════════════════════════════
 # MS05 — Holdings → health scorecard: grade reflects position count
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @respx.mock
 async def test_ms05_health_scorecard_grade_reflects_position_count():
@@ -289,6 +324,7 @@ async def test_ms05_health_scorecard_grade_reflects_position_count():
 # MS06 — Transactions → patterns: buy count matches raw activity records
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_ms06_transaction_patterns_buy_count_matches_source():
     """
@@ -301,14 +337,13 @@ async def test_ms06_transaction_patterns_buy_count_matches_source():
     _mock_holdings()
 
     import agent.tools.transaction_patterns as tp_module
+
     with patch.object(tp_module._market, "get_quote", new_callable=AsyncMock) as mock_q:
         mock_q.return_value = {"status": "price_unavailable", "current_price": None}
         patterns = await _transaction_patterns()
 
     assert patterns["status"] == "ok"
-    expected_buys = sum(
-        1 for a in ORDERS_DATA["activities"] if a["type"] == "BUY"
-    )
+    expected_buys = sum(1 for a in ORDERS_DATA["activities"] if a["type"] == "BUY")
     assert patterns["total_buy_transactions"] == expected_buys, (
         f"MS06: Expected {expected_buys} BUY transactions; "
         f"patterns tool reported {patterns['total_buy_transactions']}"
@@ -318,6 +353,7 @@ async def test_ms06_transaction_patterns_buy_count_matches_source():
 # ══════════════════════════════════════════════════════════════════════════════
 # MS07 — Proactive monitor first session: no changes reported
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @respx.mock
 async def test_ms07_proactive_monitor_first_session_no_changes():
@@ -344,6 +380,7 @@ async def test_ms07_proactive_monitor_first_session_no_changes():
 # MS08 — Proactive monitor with snapshot: portfolio value change detected
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_ms08_proactive_monitor_detects_value_change():
     """
@@ -368,8 +405,7 @@ async def test_ms08_proactive_monitor_detects_value_change():
 
     assert result["status"] == "ok"
     value_changes = [
-        c for c in result["changes_since_last_session"]
-        if c.get("direction") == "VALUE_CHANGE"
+        c for c in result["changes_since_last_session"] if c.get("direction") == "VALUE_CHANGE"
     ]
     assert len(value_changes) >= 1, (
         "MS08: A 23% portfolio value increase must be surfaced as a VALUE_CHANGE"
@@ -381,6 +417,7 @@ async def test_ms08_proactive_monitor_detects_value_change():
 # ══════════════════════════════════════════════════════════════════════════════
 # MS09 — Proactive monitor: new concentration breach detected
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @respx.mock
 async def test_ms09_proactive_monitor_detects_concentration_breach():
@@ -408,10 +445,7 @@ async def test_ms09_proactive_monitor_detects_concentration_breach():
     result = await _proactive_monitor(prev_snap_json=json.dumps(prev_snapshot))
     assert result["status"] == "ok"
 
-    breach_alerts = [
-        a for a in result["alerts"]
-        if a.get("type") == "NEW_CONCENTRATION_BREACH"
-    ]
+    breach_alerts = [a for a in result["alerts"] if a.get("type") == "NEW_CONCENTRATION_BREACH"]
     assert len(breach_alerts) >= 1, (
         "MS09: AAPL crossing the concentration threshold must generate "
         "a NEW_CONCENTRATION_BREACH alert"
@@ -421,6 +455,7 @@ async def test_ms09_proactive_monitor_detects_concentration_breach():
 # ══════════════════════════════════════════════════════════════════════════════
 # MS10 — Fee drag cross-check: fees from raw orders match tool total
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @respx.mock
 async def test_ms10_fee_drag_total_matches_sum_of_order_fees():
@@ -437,9 +472,7 @@ async def test_ms10_fee_drag_total_matches_sum_of_order_fees():
     result = await _fee_drag("max")
     assert result["status"] == "ok"
 
-    expected_fees = sum(
-        a.get("fee", 0) or 0 for a in ORDERS_DATA["activities"]
-    )
+    expected_fees = sum(a.get("fee", 0) or 0 for a in ORDERS_DATA["activities"])
     assert abs(result["total_fees_paid"] - expected_fees) < 0.01, (
         f"MS10: fee_drag reported ${result['total_fees_paid']:.2f} total fees "
         f"but raw orders sum to ${expected_fees:.2f}"
@@ -450,6 +483,7 @@ async def test_ms10_fee_drag_total_matches_sum_of_order_fees():
 # MS11 — Health scorecard with 12 well-diversified positions → grade B+
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_ms11_health_scorecard_well_diversified_earns_high_grade():
     """
@@ -459,13 +493,21 @@ async def test_ms11_health_scorecard_well_diversified_earns_high_grade():
     """
     _auth()
     sectors = [
-        "Technology", "Healthcare", "Financial Services",
-        "Consumer Defensive", "Industrials", "Energy",
+        "Technology",
+        "Healthcare",
+        "Financial Services",
+        "Consumer Defensive",
+        "Industrials",
+        "Energy",
     ]
     diversified_holdings = [
         {
-            "symbol": f"ETF{i:02d}", "name": f"ETF {i}", "quantity": 10, "value": 1000.00,
-            "valueInBaseCurrency": 1000.00, "currency": "USD",
+            "symbol": f"ETF{i:02d}",
+            "name": f"ETF {i}",
+            "quantity": 10,
+            "value": 1000.00,
+            "valueInBaseCurrency": 1000.00,
+            "currency": "USD",
             "assetClass": "EQUITY" if i < 10 else "BOND",
             "assetSubClass": "ETF",
             "sectors": [{"name": sectors[i % len(sectors)], "weight": 1.0}],
@@ -493,6 +535,7 @@ async def test_ms11_health_scorecard_well_diversified_earns_high_grade():
 # ══════════════════════════════════════════════════════════════════════════════
 # MS12 — Market context + hedges: suggested_hedges non-empty (all 4 themes)
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.parametrize("theme", ["rising_rates", "recession", "inflation", "bull_market"])
 @respx.mock

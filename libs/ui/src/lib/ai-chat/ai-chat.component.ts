@@ -364,6 +364,13 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
     this.isPromptTipsOpen = false;
     this.ngOnInit(); // re-push the welcome message
     this.changeDetectorRef.markForCheck();
+    setTimeout(() => {
+      const ta =
+        document.querySelector<HTMLTextAreaElement>('.gf-ai-chat-input');
+      if (ta) {
+        ta.focus();
+      }
+    }, 0);
   }
 
   // ── Send Message ────────────────────────────────────────────────────────────

@@ -1,0 +1,35 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ghostfolio-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start:server"],
+      "port": 3333
+    },
+    {
+      "name": "ghostfolio-client",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start:client"],
+      "port": 4200
+    },
+    {
+      "name": "fortio-agent",
+      "runtimeExecutable": "fortio",
+      "runtimeArgs": ["serve"],
+      "port": 8001
+    },
+    {
+      "name": "storybook",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start:storybook"],
+      "port": 6006
+    },
+    {
+      "name": "prisma-studio",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "database:gui"],
+      "port": 5555
+    }
+  ]
+}

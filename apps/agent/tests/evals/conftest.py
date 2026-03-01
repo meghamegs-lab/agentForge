@@ -9,17 +9,19 @@ be installed in all CI environments. We stub them so the eval suite can be
 collected and the unit-level tests can run regardless. Tests that exercise the
 market data client directly are skipped if the real packages are missing.
 """
+
 from __future__ import annotations
 
 import sys
 import types
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 # ─── Optional-dependency stubs ────────────────────────────────────────────────
 # These stubs let the test suite *collect* (import) even when optional packages
 # are absent from the environment. Real integration tests that need live market
 # data are skipped via the skip markers below.
+
 
 def _stub_module(name: str, **attrs) -> types.ModuleType:
     mod = types.ModuleType(name)
@@ -41,8 +43,7 @@ if "curl_cffi" not in sys.modules:
 if "langsmith" not in sys.modules:
     _stub_module("langsmith")
 
-import pytest
-
+import pytest  # noqa: E402
 
 # ─── Auth helpers ─────────────────────────────────────────────────────────────
 
@@ -151,7 +152,10 @@ def holdings_multi_currency():
                 "currency": "USD",
                 "assetClass": "EQUITY",
                 "assetSubClass": "ETF",
-                "sectors": [{"name": "Technology", "weight": 0.30}, {"name": "Other", "weight": 0.70}],
+                "sectors": [
+                    {"name": "Technology", "weight": 0.30},
+                    {"name": "Other", "weight": 0.70},
+                ],
                 "countries": [{"name": "United States", "weight": 1.0}],
             },
         ]

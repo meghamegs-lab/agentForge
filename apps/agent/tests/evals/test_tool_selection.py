@@ -1,5 +1,5 @@
 """
-evalsNew/test_tool_selection_v2.py — Tool Selection Eval Suite (v2)
+evals/test_tool_selection.py — Tool Selection Eval Suite (v2)
 ====================================================================
 Eval IDs: TS01–TS06
 
@@ -27,20 +27,16 @@ Tests:
 
 All tests are pure Python — no network calls, no LLM required.
 """
+
 from __future__ import annotations
 
-import pytest
-
 from agent.tools.diversification import analyze_diversification
-from agent.tools.fee_drag import get_fee_drag_analysis
 from agent.tools.health_scorecard import get_portfolio_health_scorecard
 from agent.tools.market import get_market_data
 from agent.tools.performance import get_performance
 from agent.tools.portfolio import get_portfolio_summary
-from agent.tools.rebalancing import get_rebalancing_plan
 from agent.tools.transaction_patterns import get_transaction_pattern_intelligence
 from agent.tools.transactions import get_transactions
-
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -62,6 +58,7 @@ def _check_triggers(tool_fn, triggers: list[str]) -> list[str]:
 #         Verify: docstring covers return/performance keywords.
 #         Verify: "ytd" is a valid accepted date_range value.
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class TestTS01_YTDReturnRoutesToPerformance:
     def test_performance_docstring_covers_return_keywords(self):
@@ -106,13 +103,12 @@ class TestTS01_YTDReturnRoutesToPerformance:
 #         Verify: no false routing to get_portfolio_summary for sector data.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class TestTS02_SectorAllocationRoutesToDiversification:
     def test_diversification_docstring_covers_sector_keywords(self):
         triggers = ["sector", "allocation", "diversif", "concentration", "geographic"]
         missing = _check_triggers(analyze_diversification, triggers)
-        assert not missing, (
-            f"TS02: analyze_diversification missing trigger keywords: {missing}"
-        )
+        assert not missing, f"TS02: analyze_diversification missing trigger keywords: {missing}"
 
     def test_diversification_preferred_over_portfolio_for_sector(self):
         """
@@ -142,13 +138,12 @@ class TestTS02_SectorAllocationRoutesToDiversification:
 #         Verify: transaction_pattern_intelligence also covers pattern detection.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class TestTS03_DuplicateTransactionsRoutesToTxTool:
     def test_transactions_docstring_covers_history_keywords(self):
         triggers = ["transaction", "history", "buy", "sell", "fee", "dividend"]
         missing = _check_triggers(get_transactions, triggers)
-        assert not missing, (
-            f"TS03: get_transactions missing trigger keywords: {missing}"
-        )
+        assert not missing, f"TS03: get_transactions missing trigger keywords: {missing}"
 
     def test_pattern_intelligence_covers_pattern_keywords(self):
         triggers = ["pattern", "trading", "behaviour", "buy-and-hold"]
@@ -173,13 +168,12 @@ class TestTS03_DuplicateTransactionsRoutesToTxTool:
 #         Verify: "1y" is documented in get_performance.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class TestTS04_SPYComparisonRequiresBothTools:
     def test_market_data_docstring_covers_comparison_keywords(self):
         triggers = ["price", "market", "symbol", "stock"]
         missing = _check_triggers(get_market_data, triggers)
-        assert not missing, (
-            f"TS04: get_market_data missing trigger keywords: {missing}"
-        )
+        assert not missing, f"TS04: get_market_data missing trigger keywords: {missing}"
 
     def test_performance_docstring_covers_1y(self):
         assert "1y" in _doc(get_performance), (
@@ -205,13 +199,12 @@ class TestTS04_SPYComparisonRequiresBothTools:
 #         inspect WHAT the user holds before reasoning about AI relevance.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class TestTS05_AIStockQueryUsesPortfolioSummary:
     def test_portfolio_summary_docstring_covers_holdings_keywords(self):
         triggers = ["holdings", "portfolio", "positions", "value", "allocation"]
         missing = _check_triggers(get_portfolio_summary, triggers)
-        assert not missing, (
-            f"TS05: get_portfolio_summary missing trigger keywords: {missing}"
-        )
+        assert not missing, f"TS05: get_portfolio_summary missing trigger keywords: {missing}"
 
     def test_portfolio_summary_returns_symbol_and_name(self):
         """
@@ -243,6 +236,7 @@ class TestTS05_AIStockQueryUsesPortfolioSummary:
 #         Verify the dedicated scorecard tool exists and covers grade/score keywords.
 #         Verify it's preferred over composing multiple individual tools.
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class TestTS06_HealthQueryUsesScorecard:
     def test_health_scorecard_docstring_covers_health_keywords(self):

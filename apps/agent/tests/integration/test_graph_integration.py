@@ -16,15 +16,14 @@ Graph flow reference:
     reasoning → (tool_calls?) → tools → collect_results → reasoning (loop)
     reasoning → (no tool_calls) → verify → (escalate?) → END
 """
+
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock, patch
 
 import httpx
-import pytest
 import respx
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from agent.config import settings
@@ -34,6 +33,7 @@ BASE_URL = settings.ghostfolio_base_url.rstrip("/")
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
 
 def _initial_state(message: str = "What is my portfolio worth?", conv_id: str = "integ-1") -> dict:
     """Minimal valid AgentState for graph invocation."""
@@ -78,6 +78,7 @@ def _ai_with_tool_call(tool_name: str, args: dict | None = None) -> AIMessage:
 
 # ── Test: direct response path (no tools) ─────────────────────────────────────
 
+
 class TestDirectResponsePath:
     async def test_graph_returns_final_response(self):
         """
@@ -96,13 +97,14 @@ class TestDirectResponsePath:
             result = await graph.ainvoke(_initial_state(), config=_config())
 
         assert result["final_response"] != ""
-        assert "portfolio" in result["final_response"].lower() or "aapl" in result["final_response"].lower()
+        assert (
+            "portfolio" in result["final_response"].lower()
+            or "aapl" in result["final_response"].lower()
+        )
 
     async def test_confidence_is_set_after_graph_run(self):
         mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = _ai_direct(
-            "Your account is set up and ready for trading."
-        )
+        mock_llm.ainvoke.return_value = _ai_direct("Your account is set up and ready for trading.")
 
         with patch("agent.graph.graph._llm", mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
@@ -127,9 +129,7 @@ class TestDirectResponsePath:
 
     async def test_disclaimer_appended_to_final_response_for_advice(self):
         mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = _ai_direct(
-            "You should buy more VTI to diversify."
-        )
+        mock_llm.ainvoke.return_value = _ai_direct("You should buy more VTI to diversify.")
 
         with patch("agent.graph.graph._llm", mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
@@ -149,6 +149,7 @@ class TestDirectResponsePath:
 
 
 # ── Test: escalation path ─────────────────────────────────────────────────────
+
 
 class TestEscalationPath:
     async def test_hallucination_with_no_tools_triggers_escalation(self):
@@ -187,9 +188,7 @@ class TestEscalationPath:
     async def test_non_hallucinated_response_does_not_escalate(self):
         """A factual response without dollar amounts must NOT trigger escalation."""
         mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = _ai_direct(
-            "Your portfolio contains AAPL, VTI, and MSFT."
-        )
+        mock_llm.ainvoke.return_value = _ai_direct("Your portfolio contains AAPL, VTI, and MSFT.")
 
         with patch("agent.graph.graph._llm", mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
@@ -199,6 +198,7 @@ class TestEscalationPath:
 
 
 # ── Test: tool call routing ───────────────────────────────────────────────────
+
 
 class TestToolCallRouting:
     @respx.mock
@@ -215,8 +215,13 @@ class TestToolCallRouting:
         holdings_payload = {
             "holdings": [
                 {
-                    "symbol": "AAPL", "name": "Apple", "quantity": 10, "value": 1750.00,
-                    "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
+                    "symbol": "AAPL",
+                    "name": "Apple",
+                    "quantity": 10,
+                    "value": 1750.00,
+                    "currency": "USD",
+                    "assetClass": "EQUITY",
+                    "assetSubClass": "STOCK",
                     "sectors": [{"name": "Technology", "weight": 1.0}],
                     "countries": [{"name": "United States", "weight": 1.0}],
                 }
@@ -236,9 +241,7 @@ class TestToolCallRouting:
 
         with patch("agent.graph.graph._llm", mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
-            result = await graph.ainvoke(
-                _initial_state("What do I own?"), config=_config("t-tool")
-            )
+            result = await graph.ainvoke(_initial_state("What do I own?"), config=_config("t-tool"))
 
         # Tool results must be populated after tool execution
         assert len(result["tool_results"]) >= 1
@@ -275,6 +278,7 @@ class TestToolCallRouting:
 
 
 # ── Test: multi-turn conversation via MemorySaver ─────────────────────────────
+
 
 class TestMultiTurnConversation:
     async def test_messages_accumulate_across_turns(self):
@@ -345,14 +349,24 @@ class TestMultiTurnConversation:
             return_value=httpx.Response(200, json={"authToken": "ctx-tok"})
         )
         respx_mock.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
-            return_value=httpx.Response(200, json={
-                "holdings": [
-                    {"symbol": "NVDA", "name": "Nvidia", "quantity": 5, "value": 2000.0,
-                     "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
-                     "sectors": [{"name": "Technology", "weight": 1.0}],
-                     "countries": [{"name": "United States", "weight": 1.0}]},
-                ]
-            })
+            return_value=httpx.Response(
+                200,
+                json={
+                    "holdings": [
+                        {
+                            "symbol": "NVDA",
+                            "name": "Nvidia",
+                            "quantity": 5,
+                            "value": 2000.0,
+                            "currency": "USD",
+                            "assetClass": "EQUITY",
+                            "assetSubClass": "STOCK",
+                            "sectors": [{"name": "Technology", "weight": 1.0}],
+                            "countries": [{"name": "United States", "weight": 1.0}],
+                        },
+                    ]
+                },
+            )
         )
 
         mock_llm = AsyncMock()
@@ -363,9 +377,7 @@ class TestMultiTurnConversation:
 
         with respx_mock, patch("agent.graph.graph._llm", mock_llm):
             graph = build_graph(checkpointer=MemorySaver())
-            result = await graph.ainvoke(
-                _initial_state("What do I hold?"), config=_config("t-ctx")
-            )
+            result = await graph.ainvoke(_initial_state("What do I hold?"), config=_config("t-ctx"))
 
         # NVDA should be captured in context_entities after the tool ran
         tickers = result.get("context_entities", {}).get("tickers", [])
@@ -375,6 +387,7 @@ class TestMultiTurnConversation:
 
 
 # ── Test: verification pipeline runs on every response ────────────────────────
+
 
 class TestVerificationAlwaysRuns:
     async def test_low_confidence_when_no_tool_data_and_prediction(self):
@@ -401,9 +414,7 @@ class TestVerificationAlwaysRuns:
         should get HIGH confidence when no tool results lower it.
         """
         mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = _ai_direct(
-            "Your account has been set up correctly."
-        )
+        mock_llm.ainvoke.return_value = _ai_direct("Your account has been set up correctly.")
 
         with patch("agent.graph.graph._llm", mock_llm):
             graph = build_graph(checkpointer=MemorySaver())

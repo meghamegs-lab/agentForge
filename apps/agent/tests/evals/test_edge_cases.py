@@ -1,5 +1,5 @@
 """
-evalsNew/test_edge_cases_v2.py — Edge Case Eval Suite (v2)
+evals/test_edge_cases.py — Edge Case Eval Suite (v2)
 ===========================================================
 Eval IDs: EC01–EC16
 
@@ -25,6 +25,7 @@ Tests in this file:
 
 All network calls are mocked with respx — zero real I/O.
 """
+
 from __future__ import annotations
 
 import httpx
@@ -52,6 +53,7 @@ def _auth():
 # ══════════════════════════════════════════════════════════════════════════════
 # EC01 — Empty portfolio returns graceful empty response
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @respx.mock
 async def test_ec01_empty_portfolio_returns_empty_status():
@@ -105,14 +107,16 @@ async def test_ec01_empty_transactions_returns_empty_status():
 # EC02 — Unknown ticker: price_unavailable, agent must not guess
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 async def test_ec02_unknown_ticker_returns_price_unavailable():
     """
     get_market_data for a non-existent symbol (FAKESTOCK) must return
     status='price_unavailable', not fabricate a price.
     The agent docstring instructs: 'If status=price_unavailable, do NOT guess.'
     """
-    from agent.tools.market import get_market_data as market_tool
     from unittest.mock import AsyncMock, patch
+
+    from agent.tools.market import get_market_data as market_tool
 
     price_unavailable_response = {
         "status": "price_unavailable",
@@ -120,8 +124,11 @@ async def test_ec02_unknown_ticker_returns_price_unavailable():
         "error": "No price data found for FAKESTOCK — it may be delisted or have no history",
     }
 
-    with patch("agent.clients.market.MarketDataClient.get_quote",
-               new_callable=AsyncMock, return_value=price_unavailable_response):
+    with patch(
+        "agent.clients.market.MarketDataClient.get_quote",
+        new_callable=AsyncMock,
+        return_value=price_unavailable_response,
+    ):
         result = await market_tool.ainvoke({"symbols": "FAKESTOCK"})
 
     assert result.get("status") == "price_unavailable", (
@@ -141,12 +148,14 @@ async def test_ec02_unknown_ticker_returns_price_unavailable():
 #         The LLM-side test is: 'How did I do?' → agent asks clarifying question.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def test_ec03_performance_tool_has_safe_default_date_range():
     """
     When no date_range is specified (uses default), the tool must use 'ytd'.
     This ensures an ambiguous query ('how did I do?') defaults gracefully.
     """
     import inspect
+
     from agent.tools.performance import _get_performance
 
     sig = inspect.signature(_get_performance)
@@ -177,6 +186,7 @@ def test_ec03_performance_docstring_lists_all_valid_ranges():
 # EC04 — Future date in transaction filter returns empty gracefully
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_ec04_future_date_returns_empty():
     """
@@ -194,9 +204,7 @@ async def test_ec04_future_date_returns_empty():
         f"EC04: Future date must return empty or ok (no transactions), got: {result}"
     )
     tx_count = result.get("transaction_count", 0)
-    assert tx_count == 0, (
-        f"EC04: Future date must return 0 transactions, got: {tx_count}"
-    )
+    assert tx_count == 0, f"EC04: Future date must return 0 transactions, got: {tx_count}"
 
 
 @respx.mock
@@ -221,6 +229,7 @@ async def test_ec04_past_date_before_portfolio_start_returns_empty():
 #         The tool must return both (detection is the agent's job); the agent
 #         must identify them as a potential duplicate pair.
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @respx.mock
 async def test_ec05_duplicate_transactions_both_returned(transactions_with_duplicates_data):
@@ -254,12 +263,30 @@ def test_ec05_detect_duplicates_from_transaction_list():
     This is the agent's duplicate detection logic.
     """
     transactions = [
-        {"id": "tx-dup-1", "symbol": "MSFT", "date": "2024-05-10T00:00:00.000Z",
-         "quantity": 5, "unit_price": 420.00, "type": "BUY"},
-        {"id": "tx-dup-2", "symbol": "MSFT", "date": "2024-05-10T00:00:00.000Z",
-         "quantity": 5, "unit_price": 420.00, "type": "BUY"},
-        {"id": "tx-003", "symbol": "AAPL", "date": "2024-06-01T00:00:00.000Z",
-         "quantity": 10, "unit_price": 170.00, "type": "BUY"},
+        {
+            "id": "tx-dup-1",
+            "symbol": "MSFT",
+            "date": "2024-05-10T00:00:00.000Z",
+            "quantity": 5,
+            "unit_price": 420.00,
+            "type": "BUY",
+        },
+        {
+            "id": "tx-dup-2",
+            "symbol": "MSFT",
+            "date": "2024-05-10T00:00:00.000Z",
+            "quantity": 5,
+            "unit_price": 420.00,
+            "type": "BUY",
+        },
+        {
+            "id": "tx-003",
+            "symbol": "AAPL",
+            "date": "2024-06-01T00:00:00.000Z",
+            "quantity": 10,
+            "unit_price": 170.00,
+            "type": "BUY",
+        },
     ]
 
     # Duplicate detection function (mirrors what the agent would do)
@@ -281,9 +308,7 @@ def test_ec05_detect_duplicates_from_transaction_list():
         return duplicates
 
     dupes = find_duplicates(transactions)
-    assert len(dupes) == 1, (
-        f"EC05: Expected 1 duplicate pair, found {len(dupes)}: {dupes}"
-    )
+    assert len(dupes) == 1, f"EC05: Expected 1 duplicate pair, found {len(dupes)}: {dupes}"
     assert set(dupes[0]) == {"tx-dup-1", "tx-dup-2"}, (
         f"EC05: Duplicate pair must be (tx-dup-1, tx-dup-2), got {dupes[0]}"
     )
@@ -292,6 +317,7 @@ def test_ec05_detect_duplicates_from_transaction_list():
 # ══════════════════════════════════════════════════════════════════════════════
 # EC06 — Delisted asset (value=0.00): no ZeroDivisionError, allocation=0%
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @respx.mock
 async def test_ec06_delisted_asset_zero_value_no_crash(holdings_with_delisted):
@@ -334,14 +360,27 @@ async def test_ec06_diversification_handles_zero_value_holding():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
-        return_value=httpx.Response(200, json={
-            "holdings": [
-                {"symbol": "AAPL", "valueInBaseCurrency": 1750.00, "assetClass": "EQUITY",
-                 "sectors": [{"name": "Technology", "weight": 1.0}], "countries": []},
-                {"symbol": "DLST", "valueInBaseCurrency": 0.00, "assetClass": "EQUITY",
-                 "sectors": [], "countries": []},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "holdings": [
+                    {
+                        "symbol": "AAPL",
+                        "valueInBaseCurrency": 1750.00,
+                        "assetClass": "EQUITY",
+                        "sectors": [{"name": "Technology", "weight": 1.0}],
+                        "countries": [],
+                    },
+                    {
+                        "symbol": "DLST",
+                        "valueInBaseCurrency": 0.00,
+                        "assetClass": "EQUITY",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                ]
+            },
+        )
     )
     try:
         result = await _analyze_diversification()
@@ -355,6 +394,7 @@ async def test_ec06_diversification_handles_zero_value_holding():
 # ══════════════════════════════════════════════════════════════════════════════
 # EC07 — Single-holding portfolio: allocation_percent = 100%, concentration flag
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @respx.mock
 async def test_ec07_single_holding_allocation_is_100_pct(holdings_single):
@@ -376,8 +416,7 @@ async def test_ec07_single_holding_allocation_is_100_pct(holdings_single):
 
     aapl = result["holdings"][0]
     assert abs(aapl["allocation_percent"] - 100.0) <= 0.01, (
-        f"EC07: Single holding must have allocation_percent=100.0, "
-        f"got {aapl['allocation_percent']}"
+        f"EC07: Single holding must have allocation_percent=100.0, got {aapl['allocation_percent']}"
     )
 
 
@@ -389,14 +428,22 @@ async def test_ec07_single_holding_triggers_concentration_flag():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
-        return_value=httpx.Response(200, json={
-            "holdings": [
-                {"symbol": "AAPL", "name": "Apple Inc.", "valueInBaseCurrency": 8750.00,
-                 "assetClass": "EQUITY", "assetSubClass": "STOCK",
-                 "sectors": [{"name": "Technology", "weight": 1.0}],
-                 "countries": [{"name": "United States", "weight": 1.0}]},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "holdings": [
+                    {
+                        "symbol": "AAPL",
+                        "name": "Apple Inc.",
+                        "valueInBaseCurrency": 8750.00,
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [{"name": "Technology", "weight": 1.0}],
+                        "countries": [{"name": "United States", "weight": 1.0}],
+                    },
+                ]
+            },
+        )
     )
     result = await _analyze_diversification()
 
@@ -413,6 +460,7 @@ async def test_ec07_single_holding_triggers_concentration_flag():
 # ══════════════════════════════════════════════════════════════════════════════
 # EC08 — Fractional share transactions: quantity < 1 handled without rounding
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @respx.mock
 async def test_ec08_fractional_shares_correct_total_value(transactions_fractional):
@@ -461,14 +509,24 @@ async def test_ec08_fractional_quantity_not_zero():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/order").mock(
-        return_value=httpx.Response(200, json={
-            "activities": [
-                {"id": "micro-tx", "date": "2024-10-01T00:00:00.000Z", "type": "BUY",
-                 "SymbolProfile": {"symbol": "BRK.B", "name": "Berkshire Hathaway"},
-                 "quantity": 0.001, "unitPrice": 350000.00, "fee": 0.00,
-                 "currency": "USD", "account": {"name": "Brokerage"}},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "activities": [
+                    {
+                        "id": "micro-tx",
+                        "date": "2024-10-01T00:00:00.000Z",
+                        "type": "BUY",
+                        "SymbolProfile": {"symbol": "BRK.B", "name": "Berkshire Hathaway"},
+                        "quantity": 0.001,
+                        "unitPrice": 350000.00,
+                        "fee": 0.00,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                ]
+            },
+        )
     )
     result = await _get_transactions()
 
@@ -485,6 +543,7 @@ async def test_ec08_fractional_quantity_not_zero():
 #         rather than a list. The tool must normalise both formats.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_ec09_portfolio_handles_holdings_as_dict_format():
     """
@@ -494,20 +553,35 @@ async def test_ec09_portfolio_handles_holdings_as_dict_format():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
-        return_value=httpx.Response(200, json={
-            "holdings": {
-                "AAPL": {
-                    "symbol": "AAPL", "name": "Apple", "quantity": 10, "value": 1750.00,
-                    "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
-                    "sectors": [], "countries": [],
-                },
-                "VTI": {
-                    "symbol": "VTI", "name": "Vanguard", "quantity": 20, "value": 4200.00,
-                    "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "ETF",
-                    "sectors": [], "countries": [],
-                },
-            }
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "holdings": {
+                    "AAPL": {
+                        "symbol": "AAPL",
+                        "name": "Apple",
+                        "quantity": 10,
+                        "value": 1750.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "STOCK",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                    "VTI": {
+                        "symbol": "VTI",
+                        "name": "Vanguard",
+                        "quantity": 20,
+                        "value": 4200.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "ETF",
+                        "sectors": [],
+                        "countries": [],
+                    },
+                }
+            },
+        )
     )
     result = await _get_portfolio_summary()
     assert result["status"] == "ok", f"EC09: Dict-format holdings failed: {result}"
@@ -525,6 +599,7 @@ async def test_ec09_portfolio_handles_holdings_as_dict_format():
 #         sensible defaults rather than raising KeyError.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_ec10_portfolio_missing_optional_fields_use_defaults():
     """
@@ -534,12 +609,15 @@ async def test_ec10_portfolio_missing_optional_fields_use_defaults():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
-        return_value=httpx.Response(200, json={
-            "holdings": [
-                # Only required fields present — everything else absent
-                {"symbol": "MIN", "value": 500.00},
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "holdings": [
+                    # Only required fields present — everything else absent
+                    {"symbol": "MIN", "value": 500.00},
+                ]
+            },
+        )
     )
     result = await _get_portfolio_summary()
     assert result["status"] == "ok", f"EC10: Missing fields caused error: {result}"
@@ -560,6 +638,7 @@ async def test_ec10_portfolio_missing_optional_fields_use_defaults():
 #         International ETFs may have names with non-ASCII characters.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_ec11_unicode_holding_names_do_not_crash():
     """
@@ -569,20 +648,27 @@ async def test_ec11_unicode_holding_names_do_not_crash():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
-        return_value=httpx.Response(200, json={
-            "holdings": [
-                {
-                    "symbol": "EEM", "name": "新兴市场 ETF 🌍", "quantity": 10,
-                    "value": 1200.00, "currency": "USD",
-                    "assetClass": "EQUITY", "assetSubClass": "ETF",
-                    "sectors": [{"name": "Financiëel", "weight": 1.0}],
-                    "countries": [
-                        {"name": "日本", "weight": 0.5},
-                        {"name": "中国", "weight": 0.5},
-                    ],
-                },
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "holdings": [
+                    {
+                        "symbol": "EEM",
+                        "name": "新兴市场 ETF 🌍",
+                        "quantity": 10,
+                        "value": 1200.00,
+                        "currency": "USD",
+                        "assetClass": "EQUITY",
+                        "assetSubClass": "ETF",
+                        "sectors": [{"name": "Financiëel", "weight": 1.0}],
+                        "countries": [
+                            {"name": "日本", "weight": 0.5},
+                            {"name": "中国", "weight": 0.5},
+                        ],
+                    },
+                ]
+            },
+        )
     )
     result = await _get_portfolio_summary()
     assert result["status"] == "ok", f"EC11: Unicode caused error: {result}"
@@ -597,6 +683,7 @@ async def test_ec11_unicode_holding_names_do_not_crash():
 #         with allocations still summing to 100%.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_ec12_large_portfolio_100_holdings_completes():
     """
@@ -607,9 +694,13 @@ async def test_ec12_large_portfolio_100_holdings_completes():
     _auth()
     holdings = [
         {
-            "symbol": f"STK{i:03d}", "name": f"Stock {i}", "quantity": 10,
+            "symbol": f"STK{i:03d}",
+            "name": f"Stock {i}",
+            "quantity": 10,
             "value": 100.00,
-            "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
+            "currency": "USD",
+            "assetClass": "EQUITY",
+            "assetSubClass": "STOCK",
             "sectors": [{"name": "Technology", "weight": 1.0}],
             "countries": [{"name": "United States", "weight": 1.0}],
         }
@@ -634,6 +725,7 @@ async def test_ec12_large_portfolio_100_holdings_completes():
 #         The LLM might pass "last_quarter" or "q3" — must default to ytd.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_ec13_invalid_performance_period_falls_back_to_ytd():
     """
@@ -642,20 +734,21 @@ async def test_ec13_invalid_performance_period_falls_back_to_ytd():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
-        return_value=httpx.Response(200, json={
-            "performance": {
-                "netPerformancePercentage": 0.05,
-                "netPerformance": 400.00,
-                "currentValueInBaseCurrency": 8400.00,
-                "totalInvestment": 8000.00,
-                "currentNetWorth": 8400.00,
-            }
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "performance": {
+                    "netPerformancePercentage": 0.05,
+                    "netPerformance": 400.00,
+                    "currentValueInBaseCurrency": 8400.00,
+                    "totalInvestment": 8000.00,
+                    "currentNetWorth": 8400.00,
+                }
+            },
+        )
     )
-    result = await _get_performance("last_quarter")   # invalid period
-    assert result["status"] == "ok", (
-        f"EC13: Invalid period should not produce error, got: {result}"
-    )
+    result = await _get_performance("last_quarter")  # invalid period
+    assert result["status"] == "ok", f"EC13: Invalid period should not produce error, got: {result}"
     assert result["requested_period"] == "ytd", (
         f"EC13: Invalid period must fall back to 'ytd', got: {result['requested_period']!r}"
     )
@@ -666,6 +759,7 @@ async def test_ec13_invalid_performance_period_falls_back_to_ytd():
 #         The LLM may pass "buy", "Buy", or "BUY" — all must work.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @respx.mock
 async def test_ec14_transaction_type_filter_case_insensitive():
     """
@@ -674,24 +768,37 @@ async def test_ec14_transaction_type_filter_case_insensitive():
     """
     _auth()
     respx.get(f"{BASE_URL}/api/v1/order").mock(
-        return_value=httpx.Response(200, json={
-            "activities": [
-                {
-                    "id": "t1", "date": "2024-01-01T00:00:00Z", "type": "BUY",
-                    "SymbolProfile": {"symbol": "AAPL", "name": "Apple"},
-                    "quantity": 5, "unitPrice": 170.0, "fee": 0.0,
-                    "currency": "USD", "account": {"name": "Brokerage"},
-                },
-                {
-                    "id": "t2", "date": "2024-02-01T00:00:00Z", "type": "DIVIDEND",
-                    "SymbolProfile": {"symbol": "AAPL", "name": "Apple"},
-                    "quantity": 5, "unitPrice": 0.25, "fee": 0.0,
-                    "currency": "USD", "account": {"name": "Brokerage"},
-                },
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "activities": [
+                    {
+                        "id": "t1",
+                        "date": "2024-01-01T00:00:00Z",
+                        "type": "BUY",
+                        "SymbolProfile": {"symbol": "AAPL", "name": "Apple"},
+                        "quantity": 5,
+                        "unitPrice": 170.0,
+                        "fee": 0.0,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                    {
+                        "id": "t2",
+                        "date": "2024-02-01T00:00:00Z",
+                        "type": "DIVIDEND",
+                        "SymbolProfile": {"symbol": "AAPL", "name": "Apple"},
+                        "quantity": 5,
+                        "unitPrice": 0.25,
+                        "fee": 0.0,
+                        "currency": "USD",
+                        "account": {"name": "Brokerage"},
+                    },
+                ]
+            },
+        )
     )
-    result = await _get_transactions(transaction_type="buy")   # lowercase
+    result = await _get_transactions(transaction_type="buy")  # lowercase
     assert result["status"] == "ok", f"EC14: Case-insensitive filter failed: {result}"
     assert result["transaction_count"] == 1, (
         f"EC14: Expected 1 BUY transaction, got {result['transaction_count']}"
@@ -705,6 +812,7 @@ async def test_ec14_transaction_type_filter_case_insensitive():
 # EC15 — Market data: whitespace-only symbol string returns structured error
 #         The LLM might pass "   " (spaces) if it misunderstood the query.
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 async def test_ec15_market_data_whitespace_symbol_returns_error():
     """
@@ -725,13 +833,16 @@ async def test_ec15_market_data_whitespace_symbol_returns_error():
 #         The tool docstring says "AAPL,MSFT,VTI" — LLM may add spaces.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 async def test_ec16_market_data_comma_separated_symbols_with_spaces():
     """
     "AAPL, MSFT , VTI" with extra spaces must be stripped and parsed correctly.
     The tool must return data for all 3 symbols, not error on whitespace.
     """
-    import pandas as pd
     from unittest.mock import MagicMock, patch
+
+    import pandas as pd
+
     from agent.tools.market import get_market_data as market_tool
 
     mock_ticker = MagicMock()

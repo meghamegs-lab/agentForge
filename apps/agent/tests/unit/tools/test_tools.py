@@ -5,6 +5,7 @@ All HTTP calls are mocked with respx — no real network requests.
 Imports the private _impl functions (not the @tool wrappers) so tests
 run the business logic directly without LangChain overhead.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -34,8 +35,8 @@ def mock_auth(base_url: str = BASE_URL) -> None:
 
 # ── Tool 1: Portfolio Summary ──────────────────────────────────────────────────
 
-class TestGetPortfolioSummary:
 
+class TestGetPortfolioSummary:
     @respx.mock
     async def test_returns_holdings_with_allocation_percentages(self, sample_holdings_response):
         mock_auth()
@@ -101,8 +102,8 @@ class TestGetPortfolioSummary:
 
 # ── Tool 2: Performance ────────────────────────────────────────────────────────
 
-class TestGetPerformance:
 
+class TestGetPerformance:
     @respx.mock
     async def test_returns_ytd_performance_fields(self, sample_performance_response):
         mock_auth()
@@ -139,8 +140,8 @@ class TestGetPerformance:
 
 # ── Tool 3: Transactions ───────────────────────────────────────────────────────
 
-class TestGetTransactions:
 
+class TestGetTransactions:
     @respx.mock
     async def test_returns_typed_transactions(self, sample_orders_response):
         mock_auth()
@@ -185,8 +186,8 @@ class TestGetTransactions:
 
 # ── Tool 4: Diversification ────────────────────────────────────────────────────
 
-class TestAnalyzeDiversification:
 
+class TestAnalyzeDiversification:
     @respx.mock
     async def test_sector_weights_sum_to_100(self, sample_holdings_response):
         mock_auth()
@@ -255,8 +256,8 @@ class TestAnalyzeDiversification:
 
 # ── Tool 5: Market Data ────────────────────────────────────────────────────────
 
-class TestGetMarketData:
 
+class TestGetMarketData:
     async def test_returns_price_for_valid_symbol(self):
         mock_ticker = MagicMock()
         mock_ticker.fast_info.currency = "USD"

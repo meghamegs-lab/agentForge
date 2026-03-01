@@ -1,7 +1,8 @@
 """Shared pytest fixtures for all test suites."""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -64,8 +65,8 @@ def sample_performance_response():
     # There are no nested period keys (ytd/1y/etc.) — one request = one period.
     return {
         "performance": {
-            "netPerformancePercentage": 0.1234,       # decimal: 0.1234 = 12.34%
-            "netPerformance": 987.65,                  # absolute gain/loss in base currency
+            "netPerformancePercentage": 0.1234,  # decimal: 0.1234 = 12.34%
+            "netPerformance": 987.65,  # absolute gain/loss in base currency
             "currentValueInBaseCurrency": 8000.00,
             "totalInvestment": 7012.35,
             "currentNetWorth": 8000.00,
@@ -122,4 +123,4 @@ def sample_orders_response():
 
 @pytest.fixture
 def now_iso():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
