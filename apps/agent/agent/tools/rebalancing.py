@@ -13,10 +13,10 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from agent.clients.ghostfolio import GhostfolioError, get_shared_client
-from agent.clients.market import MarketDataClient
+from agent.clients.ghostfolio import GhostfolioError, get_shared_client, normalize_holdings
+from agent.clients.market import get_shared_market_client
 
-_market = MarketDataClient()
+_market = get_shared_market_client()
 
 
 @tool
@@ -37,24 +37,25 @@ async def get_rebalancing_plan(
     - 'How much of X should I sell?'
 
     Args:
-        target_us_equity_pct:   Target % for US equity holdings (default 55%)
-        target_intl_equity_pct: Target % for international equity (default 25%)
-        target_bonds_pct:       Target % for bonds/fixed income (default 15%)
-        target_cash_pct:        Target % for cash/alternatives (default 5%)
+        target_us_equity_pct:   Target % for US equity holdings (0–100, default 55)
+        target_intl_equity_pct: Target % for international equity (0–100, default 25)
+        target_bonds_pct:       Target % for bonds/fixed income (0–100, default 15)
+        target_cash_pct:        Target % for cash/alternatives (0–100, default 5)
 
     Returns:
         Current vs target allocation, rebalancing trades[] with exact dollar amounts,
         estimated total trades value, tax notes.
     """
     return await _rebalancing_plan(
-        target_us_equity_pct / 100,
-        target_intl_equity_pct / 100,
-        target_bonds_pct / 100,
-        target_cash_pct / 100,
+        target_us_equity_pct,
+        target_intl_equity_pct,
+        target_bonds_pct,
+        target_cash_pct,
     )
 
 
 # Core logic: classifies holdings into asset buckets, computes deltas, and generates per-position trades.
+# All tgt_* parameters are on the 0–100 percentage scale; division by 100 happens internally.
 async def _rebalancing_plan(
     tgt_us: float,
     tgt_intl: float,
@@ -65,12 +66,7 @@ async def _rebalancing_plan(
         client = get_shared_client()
         data = await client.get_portfolio_holdings()
 
-        # Normalise: Ghostfolio can return holdings as a list OR a dict keyed by symbol
-        raw = data.get("holdings", {})
-        if isinstance(raw, list):
-            holdings = {h.get("symbol", f"pos_{i}"): h for i, h in enumerate(raw)}
-        else:
-            holdings = raw or {}
+        holdings = normalize_holdings(data)
 
         if not holdings:
             return {"status": "empty", "message": "No holdings to rebalance."}
@@ -105,11 +101,12 @@ async def _rebalancing_plan(
             position_buckets[sym] = bucket
 
         # ── Target vs current ──────────────────────────────────────
+        # tgt_* are on the 0–100 scale — divide by 100 once here.
         targets = {
-            "US_EQUITY": tgt_us * total_value,
-            "INTL_EQUITY": tgt_intl * total_value,
-            "BONDS": tgt_bonds * total_value,
-            "CASH": tgt_cash * total_value,
+            "US_EQUITY": (tgt_us / 100) * total_value,
+            "INTL_EQUITY": (tgt_intl / 100) * total_value,
+            "BONDS": (tgt_bonds / 100) * total_value,
+            "CASH": (tgt_cash / 100) * total_value,
         }
         deltas = {b: targets[b] - buckets.get(b, 0) for b in targets}
 
@@ -204,10 +201,11 @@ async def _rebalancing_plan(
                 for b, v in buckets.items()
             },
             "target_allocation": {
-                "US_EQUITY": round(tgt_us * 100, 1),
-                "INTL_EQUITY": round(tgt_intl * 100, 1),
-                "BONDS": round(tgt_bonds * 100, 1),
-                "CASH": round(tgt_cash * 100, 1),
+                # tgt_* already in 0–100 scale — display directly
+                "US_EQUITY": round(tgt_us, 1),
+                "INTL_EQUITY": round(tgt_intl, 1),
+                "BONDS": round(tgt_bonds, 1),
+                "CASH": round(tgt_cash, 1),
             },
             "trades": trades,
             "summary": {

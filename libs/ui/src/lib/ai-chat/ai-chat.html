@@ -36,7 +36,7 @@
       <div class="gf-ai-chat-header-actions">
         <button
           class="header-action-btn"
-          matTooltip="Start a new conversation"
+          matTooltip="Clear"
           (click)="startNewChat()"
         >
           ➕
@@ -254,7 +254,7 @@
         "
         (click)="togglePromptTips()"
       >
-        💡
+        💡 <span class="prompt-tips-label">Prompts</span>
       </button>
 
       <textarea

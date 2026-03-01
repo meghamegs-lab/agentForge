@@ -80,7 +80,7 @@ omit = [
     "agent/cli.py",
     "agent/prompts.py",
     "agent/mcp/server.py",
-    "tests/eval/ls_evals.py",
+    "tests/evals/ls_evals.py",
 ]
 
 [tool.coverage.report]

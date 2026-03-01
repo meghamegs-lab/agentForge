@@ -10,9 +10,9 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from agent.clients.market import MarketDataClient
+from agent.clients.market import get_shared_market_client
 
-_client = MarketDataClient()
+_client = get_shared_market_client()
 
 
 # Parses symbols string and dispatches to get_quote (single) or get_batch_quotes (multiple).
@@ -40,12 +40,15 @@ async def get_market_data(
         If status='price_unavailable', the price could not be retrieved —
         do NOT attempt to answer from training data.
     """
-    symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    try:
+        symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
 
-    if not symbol_list:
-        return {"status": "error", "error": "No valid symbols provided"}
+        if not symbol_list:
+            return {"status": "error", "error": "No valid symbols provided"}
 
-    if len(symbol_list) == 1:
-        return await _client.get_quote(symbol_list[0])
+        if len(symbol_list) == 1:
+            return await _client.get_quote(symbol_list[0])
 
-    return await _client.get_batch_quotes(symbol_list)
+        return await _client.get_batch_quotes(symbol_list)
+    except Exception as e:
+        return {"status": "error", "error": str(e)}

@@ -79,7 +79,7 @@ pytest tests/unit/ -v
 
 # Eval suite (correctness, tool selection, edge cases, multi-step)
 
-pytest tests/eval/ -v
+pytest tests/evals/ -v
 \`\`\`
 
 ---
@@ -319,16 +319,16 @@ with `respx`), plus a LangSmith experiment suite.
 
 ### Eval files
 
-| File                                                                               | Focus                                                                                      | Tests |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----- |
-| [`tests/eval/test_correctness.py`](./tests/eval/test_correctness.py)               | Arithmetic accuracy, percentage conversions, sort order, fee sums, sector rollup           | 12    |
-| [`tests/eval/test_tool_selection.py`](./tests/eval/test_tool_selection.py)         | Tool docstring trigger keywords, domain boundary isolation, parameter mapping              | 10    |
-| [`tests/eval/test_llm_tool_selection.py`](./tests/eval/test_llm_tool_selection.py) | LLM-driven tool selection routing and keyword coverage                                     | 14    |
-| [`tests/eval/test_tool_execution.py`](./tests/eval/test_tool_execution.py)         | Advanced tool execution: happy path, error cases, edge inputs for all 6 advanced tools     | 16    |
-| [`tests/eval/test_multi_step.py`](./tests/eval/test_multi_step.py)                 | Cross-tool consistency, referential integrity, multi-session proactive monitor             | 12    |
-| [`tests/eval/test_edge_cases.py`](./tests/eval/test_edge_cases.py)                 | Dict/list format switching, zero-value holdings, unicode, large portfolios, invalid inputs | 10    |
-| [`tests/eval/test_adversarial.py`](./tests/eval/test_adversarial.py)               | Prompt injection, jailbreaks, off-topic deflection, fabricated number detection            | 12    |
-| [`tests/eval/ls_evals.py`](./tests/eval/ls_evals.py)                               | LangSmith tracked experiments: correctness, safety, latency, consistency, tool-keywords    | 23    |
+| File                                                                                 | Focus                                                                                      | Tests |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ----- |
+| [`tests/evals/test_correctness.py`](./tests/evals/test_correctness.py)               | Arithmetic accuracy, percentage conversions, sort order, fee sums, sector rollup           | 12    |
+| [`tests/evals/test_tool_selection.py`](./tests/evals/test_tool_selection.py)         | Tool docstring trigger keywords, domain boundary isolation, parameter mapping              | 10    |
+| [`tests/evals/test_llm_tool_selection.py`](./tests/evals/test_llm_tool_selection.py) | LLM-driven tool selection routing and keyword coverage                                     | 14    |
+| [`tests/evals/test_tool_execution.py`](./tests/evals/test_tool_execution.py)         | Advanced tool execution: happy path, error cases, edge inputs for all 6 advanced tools     | 16    |
+| [`tests/evals/test_multi_step.py`](./tests/evals/test_multi_step.py)                 | Cross-tool consistency, referential integrity, multi-session proactive monitor             | 12    |
+| [`tests/evals/test_edge_cases.py`](./tests/evals/test_edge_cases.py)                 | Dict/list format switching, zero-value holdings, unicode, large portfolios, invalid inputs | 10    |
+| [`tests/evals/test_adversarial.py`](./tests/evals/test_adversarial.py)               | Prompt injection, jailbreaks, off-topic deflection, fabricated number detection            | 12    |
+| [`tests/evals/ls_evals.py`](./tests/evals/ls_evals.py)                               | LangSmith tracked experiments: correctness, safety, latency, consistency, tool-keywords    | 23    |
 
 ### Running the eval suite
 
@@ -336,17 +336,17 @@ with `respx`), plus a LangSmith experiment suite.
 
 # All evals (fast, ~5-10 s, no network required)
 
-pytest tests/eval/ -v
+pytest tests/evals/ -v
 
 # Specific eval files
 
-pytest tests/eval/test_correctness.py -v
-pytest tests/eval/test_tool_selection.py -v
-pytest tests/eval/test_llm_tool_selection.py -v
-pytest tests/eval/test_tool_execution.py -v
-pytest tests/eval/test_multi_step.py -v
-pytest tests/eval/test_edge_cases.py -v
-pytest tests/eval/test_adversarial.py -v
+pytest tests/evals/test_correctness.py -v
+pytest tests/evals/test_tool_selection.py -v
+pytest tests/evals/test_llm_tool_selection.py -v
+pytest tests/evals/test_tool_execution.py -v
+pytest tests/evals/test_multi_step.py -v
+pytest tests/evals/test_edge_cases.py -v
+pytest tests/evals/test_adversarial.py -v
 
 # Unit tests
 
@@ -358,7 +358,7 @@ pytest tests/adversarial/ -v
 
 # With coverage report
 
-pytest tests/unit/ tests/eval/ --cov=agent --cov-report=term-missing
+pytest tests/unit/ tests/evals/ --cov=agent --cov-report=term-missing
 \`\`\`
 
 ### LangSmith experiments (`ls_evals.py`)
@@ -377,10 +377,10 @@ pytest tests/unit/ tests/eval/ --cov=agent --cov-report=term-missing
 
 # Prerequisites: LANGCHAIN_API_KEY must be set in .env
 
-python tests/eval/ls_evals.py # all 5 eval types
-python tests/eval/ls_evals.py --only safety # one type
-python tests/eval/ls_evals.py --only latency
-python tests/eval/ls_evals.py --prefix feat/my-branch # tag experiment run
+python tests/evals/ls_evals.py # all 5 eval types
+python tests/evals/ls_evals.py --only safety # one type
+python tests/evals/ls_evals.py --only latency
+python tests/evals/ls_evals.py --prefix feat/my-branch # tag experiment run
 
 # View results at: https://smith.langchain.com → Projects → fortio-evals
 

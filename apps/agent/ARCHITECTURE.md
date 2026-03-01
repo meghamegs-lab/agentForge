@@ -148,29 +148,29 @@ response text + tool_results
 
 ### Test Suite Structure
 
-| Suite                     | File                                    | Tests  | What it covers                                         |
-| ------------------------- | --------------------------------------- | ------ | ------------------------------------------------------ |
-| Unit — API schemas        | `tests/unit/api/`                       | 19     | Pydantic schema validation                             |
-| Unit — Ghostfolio client  | `tests/unit/clients/`                   | 16     | HTTP mocking, auth, retry                              |
-| Unit — Market client      | `tests/unit/clients/`                   | 10     | yfinance mocking, retry, fallback                      |
-| Unit — Graph routing      | `tests/unit/graph/`                     | 28     | Routing logic, context extraction                      |
-| Unit — Tools              | `tests/unit/tools/`                     | 19     | Tool output shapes, edge cases                         |
-| Unit — Verification       | `tests/unit/verification/`              | 21     | All 5 pipeline stages                                  |
-| Eval — Correctness        | `tests/eval/test_correctness.py`        | 12     | Math accuracy (%, sorts, sums, sector rollup)          |
-| Eval — Tool selection     | `tests/eval/test_tool_selection.py`     | 10     | Docstring trigger keywords, domain boundary            |
-| Eval — LLM tool selection | `tests/eval/test_llm_tool_selection.py` | 14     | LLM-driven tool routing, keyword coverage              |
-| Eval — Tool execution     | `tests/eval/test_tool_execution.py`     | 16     | Advanced tool happy path + error cases                 |
-| Eval — Multi-step         | `tests/eval/test_multi_step.py`         | 12     | Cross-tool data consistency                            |
-| Eval — Edge cases         | `tests/eval/test_edge_cases.py`         | 10     | Unicode, empty portfolio, bad input                    |
-| Eval — **Adversarial**    | `tests/eval/test_adversarial.py`        | **12** | Prompt injection, jailbreaks, fabricated numbers       |
-| Adversarial (standalone)  | `tests/adversarial/test_adversarial.py` | —      | Safety / off-topic deflection (separate suite)         |
-| LangSmith Experiments     | `tests/eval/ls_evals.py`                | 23     | Correctness, safety, latency, consistency scored evals |
+| Suite                     | File                                     | Tests  | What it covers                                         |
+| ------------------------- | ---------------------------------------- | ------ | ------------------------------------------------------ |
+| Unit — API schemas        | `tests/unit/api/`                        | 19     | Pydantic schema validation                             |
+| Unit — Ghostfolio client  | `tests/unit/clients/`                    | 16     | HTTP mocking, auth, retry                              |
+| Unit — Market client      | `tests/unit/clients/`                    | 10     | yfinance mocking, retry, fallback                      |
+| Unit — Graph routing      | `tests/unit/graph/`                      | 28     | Routing logic, context extraction                      |
+| Unit — Tools              | `tests/unit/tools/`                      | 19     | Tool output shapes, edge cases                         |
+| Unit — Verification       | `tests/unit/verification/`               | 21     | All 5 pipeline stages                                  |
+| Eval — Correctness        | `tests/evals/test_correctness.py`        | 12     | Math accuracy (%, sorts, sums, sector rollup)          |
+| Eval — Tool selection     | `tests/evals/test_tool_selection.py`     | 10     | Docstring trigger keywords, domain boundary            |
+| Eval — LLM tool selection | `tests/evals/test_llm_tool_selection.py` | 14     | LLM-driven tool routing, keyword coverage              |
+| Eval — Tool execution     | `tests/evals/test_tool_execution.py`     | 16     | Advanced tool happy path + error cases                 |
+| Eval — Multi-step         | `tests/evals/test_multi_step.py`         | 12     | Cross-tool data consistency                            |
+| Eval — Edge cases         | `tests/evals/test_edge_cases.py`         | 10     | Unicode, empty portfolio, bad input                    |
+| Eval — **Adversarial**    | `tests/evals/test_adversarial.py`        | **12** | Prompt injection, jailbreaks, fabricated numbers       |
+| Adversarial (standalone)  | `tests/adversarial/test_adversarial.py`  | —      | Safety / off-topic deflection (separate suite)         |
+| LangSmith Experiments     | `tests/evals/ls_evals.py`                | 23     | Correctness, safety, latency, consistency scored evals |
 
 ### Running the Eval Suite
 
 ```bash
 # All eval tests (fast, ~5–10 s, no network)
-pytest tests/eval/ -v
+pytest tests/evals/ -v
 
 # Unit tests only
 pytest tests/unit/ -v
@@ -179,13 +179,13 @@ pytest tests/unit/ -v
 pytest tests/adversarial/ -v
 
 # Full suite with coverage
-pytest tests/unit/ tests/eval/ --cov=agent --cov-report=term-missing
+pytest tests/unit/ tests/evals/ --cov=agent --cov-report=term-missing
 
 # LangSmith scored experiments (requires LANGCHAIN_API_KEY)
-python tests/eval/ls_evals.py
-python tests/eval/ls_evals.py --only correctness
-python tests/eval/ls_evals.py --only safety
-python tests/eval/ls_evals.py --prefix feat/my-branch
+python tests/evals/ls_evals.py
+python tests/evals/ls_evals.py --only correctness
+python tests/evals/ls_evals.py --only safety
+python tests/evals/ls_evals.py --prefix feat/my-branch
 ```
 
 ### Results (as of Feb 27, 2026)
@@ -241,13 +241,13 @@ Railway aggregates these in its log stream; no additional log sink is configured
 
 ### Eval Dataset in LangSmith (`ls_evals.py`)
 
-`tests/eval/ls_evals.py` publishes a **60-example dataset** to LangSmith covering:
+`tests/evals/ls_evals.py` publishes a **60-example dataset** to LangSmith covering:
 
 - Correctness examples (C-1 through C-8): expected numeric outputs for known inputs
 - Latency examples (L-1 through L-4): max-seconds bounds per tool
 - Consistency examples (K-1 through K-4): deterministic output for same inputs
 
-These are run via `pytest tests/eval/ls_evals.py` and results appear in the LangSmith
+These are run via `pytest tests/evals/ls_evals.py` and results appear in the LangSmith
 "Datasets & Experiments" panel under the `fortio-agent` project.
 
 ---
@@ -280,7 +280,7 @@ client against Ghostfolio's API.
 | Full agent source      | `apps/agent/` in [github.com/meghamegs-lab/agentForge](https://github.com/meghamegs-lab/agentForge) |
 | Live API + Swagger UI  | [fortio-agent-production.up.railway.app/docs](https://fortio-agent-production.up.railway.app/docs)  |
 | LangSmith eval dataset | Project `fortio-agent` → Datasets → `fortio-correctness-v1`                                         |
-| Adversarial eval suite | `apps/agent/tests/eval/test_adversarial.py` (12 tests, no LLM required)                             |
+| Adversarial eval suite | `apps/agent/tests/evals/test_adversarial.py` (12 tests, no LLM required)                            |
 | Ghostfolio integration | [ghostfolio-production.up.railway.app](https://ghostfolio-production.up.railway.app)                |
 
 ### CLI Setup

@@ -22,6 +22,7 @@ async def _get_transactions(
     date_from: str = "",
     date_to: str = "",
     transaction_type: str = "",
+    limit: int = 0,
 ) -> dict[str, Any]:
     """
     Core logic for get_transactions.
@@ -99,6 +100,10 @@ async def _get_transactions(
         # Sort by date descending (newest first)
         transactions.sort(key=lambda x: x["date"], reverse=True)
 
+        # Apply limit if requested (e.g. "show me my last 10 trades")
+        if limit and limit > 0:
+            transactions = transactions[:limit]
+
         return {
             "status": "ok",
             "transaction_count": len(transactions),
@@ -130,19 +135,25 @@ async def get_transactions(
     date_from: str = "",
     date_to: str = "",
     transaction_type: str = "",
+    limit: int = 0,
 ) -> dict[str, Any]:
     """
     Retrieve transaction history including buys, sells, dividends, and fees.
     Use this when users ask about their trading history, past transactions,
-    fees paid, dividends received, or want to analyze their trading patterns.
+    fee payment records, dividends received, or want to see specific trades.
+
+    NOTE: For fee-impact analysis (how much fees erode returns as a %), use
+    get_fee_drag_analysis instead. Use this tool only for raw transaction records.
 
     Args:
         account_id: Optional account ID filter. Leave empty for all accounts.
-        date_from: Optional start date filter in ISO format (e.g. '2024-01-01').
-        date_to: Optional end date filter in ISO format (e.g. '2024-12-31').
+        date_from: Optional start date filter in ISO format (e.g. '2025-01-01').
+        date_to: Optional end date filter in ISO format (e.g. '2025-12-31').
         transaction_type: Optional type filter: 'BUY', 'SELL', 'DIVIDEND', 'FEE', 'INTEREST'.
+        limit: Optional max number of most-recent transactions to return (0 = all).
+               Use this when the user asks for "last N trades" (e.g. limit=10).
 
     Returns:
         Dictionary with transactions list, fee summary, and type breakdown.
     """
-    return await _get_transactions(account_id, date_from, date_to, transaction_type)
+    return await _get_transactions(account_id, date_from, date_to, transaction_type, limit)

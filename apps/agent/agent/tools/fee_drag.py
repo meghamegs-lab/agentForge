@@ -13,11 +13,11 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from agent.clients.ghostfolio import GhostfolioError, get_shared_client
+from agent.clients.ghostfolio import GhostfolioError, get_shared_client, normalize_holdings
 
 
 @tool
-async def get_fee_drag_analysis(date_range: str = "max") -> dict[str, Any]:
+async def get_fee_drag_analysis(date_range: str = "1y") -> dict[str, Any]:
     """
     Analyse how much trading fees have cost you as a percentage of total portfolio returns.
     Fee drag = total fees paid / total absolute gain — a metric no standard portfolio
@@ -30,7 +30,8 @@ async def get_fee_drag_analysis(date_range: str = "max") -> dict[str, Any]:
     - 'Which positions are most expensive to hold?'
 
     Args:
-        date_range: 'ytd', '1y', '5y', or 'max' (default 'max' for lifetime view)
+        date_range: 'ytd', '1y', '5y', or 'max' (default '1y'; use 'max' only when user
+                    explicitly asks for lifetime/all-time fee history — it is slow on large portfolios)
 
     Returns:
         total_fees_paid, gross_return, net_return, fee_drag_pct,
@@ -40,7 +41,7 @@ async def get_fee_drag_analysis(date_range: str = "max") -> dict[str, Any]:
 
 
 # Core logic: aggregates all transaction fees and computes fee drag % relative to gross returns.
-async def _fee_drag(date_range: str = "max") -> dict[str, Any]:
+async def _fee_drag(date_range: str = "1y") -> dict[str, Any]:
     try:
         client = get_shared_client()
 
@@ -66,10 +67,7 @@ async def _fee_drag(date_range: str = "max") -> dict[str, Any]:
         holdings_data: dict = holdings_result
 
         activities = orders_data.get("activities", [])
-        # Normalise: Ghostfolio can return holdings as a list OR a dict keyed by symbol
-        raw_holdings = holdings_data.get("holdings", {})
-        if isinstance(raw_holdings, list):
-            raw_holdings = {h.get("symbol", f"pos_{i}"): h for i, h in enumerate(raw_holdings)}
+        raw_holdings = normalize_holdings(holdings_data)
         total_value = sum(
             h.get("valueInBaseCurrency", h.get("value", 0)) or 0 for h in raw_holdings.values()
         )

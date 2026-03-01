@@ -13,7 +13,7 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from agent.clients.ghostfolio import GhostfolioError, get_shared_client
+from agent.clients.ghostfolio import GhostfolioError, get_shared_client, normalize_holdings
 
 # Sector sensitivity map: how each sector behaves in macro regimes
 SECTOR_MACRO_SENSITIVITY: dict[str, dict[str, str]] = {
@@ -138,12 +138,7 @@ async def _market_context(macro_theme: str) -> dict[str, Any]:
         client = get_shared_client()
         data = await client.get_portfolio_holdings()
 
-        # Normalise: Ghostfolio can return holdings as a list OR a dict keyed by symbol
-        raw = data.get("holdings", {})
-        if isinstance(raw, list):
-            holdings = {h.get("symbol", f"pos_{i}"): h for i, h in enumerate(raw)}
-        else:
-            holdings = raw or {}
+        holdings = normalize_holdings(data)
 
         if not holdings:
             return {"status": "empty", "message": "No holdings to analyse."}
@@ -151,6 +146,9 @@ async def _market_context(macro_theme: str) -> dict[str, Any]:
         total_value = sum(
             h.get("valueInBaseCurrency", h.get("value", 0)) or 0 for h in holdings.values()
         )
+
+        if total_value <= 0:
+            return {"status": "empty", "message": "Portfolio has no value."}
 
         # ── Analyse each position ──────────────────────────────────
         position_analyses = []

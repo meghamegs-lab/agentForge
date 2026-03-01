@@ -141,7 +141,7 @@ pytest tests/unit/api/ -v             # FastAPI schemas
 ### Eval suite (correctness, tool selection, edge cases, multi-step, adversarial)
 
 ```bash
-pytest tests/eval/ -v
+pytest tests/evals/ -v
 ```
 
 All eval tests are mocked — no real API calls, no LLM costs.
@@ -164,13 +164,13 @@ pytest tests/adversarial/ -v           # safety / jailbreak / off-topic
 
 > **Two adversarial test locations:**
 >
-> - `tests/eval/test_adversarial.py` — adversarial tests that run as part of the eval suite
+> - `tests/evals/test_adversarial.py` — adversarial tests that run as part of the eval suite
 > - `tests/adversarial/test_adversarial.py` — standalone adversarial/safety suite (run separately)
 
 ### Coverage report
 
 ```bash
-pytest tests/unit/ tests/eval/ --cov=agent --cov-report=term-missing
+pytest tests/unit/ tests/evals/ --cov=agent --cov-report=term-missing
 ```
 
 ---
@@ -302,17 +302,17 @@ Run the scored LangSmith eval suite to benchmark correctness, safety, and latenc
 
 ```bash
 # Requires LANGCHAIN_API_KEY in .env
-python tests/eval/ls_evals.py
+python tests/evals/ls_evals.py
 
 # Single eval type
-python tests/eval/ls_evals.py --only correctness
-python tests/eval/ls_evals.py --only safety
-python tests/eval/ls_evals.py --only latency
-python tests/eval/ls_evals.py --only consistency
-python tests/eval/ls_evals.py --only tool-keywords
+python tests/evals/ls_evals.py --only correctness
+python tests/evals/ls_evals.py --only safety
+python tests/evals/ls_evals.py --only latency
+python tests/evals/ls_evals.py --only consistency
+python tests/evals/ls_evals.py --only tool-keywords
 
 # Tag by branch for comparison
-python tests/eval/ls_evals.py --prefix feat/my-branch
+python tests/evals/ls_evals.py --prefix feat/my-branch
 ```
 
 View results at: https://smith.langchain.com → Projects → **fortio-evals**

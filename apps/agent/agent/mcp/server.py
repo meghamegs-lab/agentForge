@@ -36,19 +36,31 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from typing import Any
 
 import structlog
+from langsmith import traceable
 from mcp import types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+
+# ── LangSmith tracing ──────────────────────────────────────────────────────────
+# When launched directly (python -m agent.mcp.server or as a subprocess by an
+# MCP host like Claude Desktop), cli.py is NOT imported, so the env vars are not
+# set yet.  Push them here from pydantic-settings so LangSmith tracing works.
+from agent.config import settings  # noqa: E402 — must come before langsmith reads os.environ
+
+os.environ.setdefault("LANGCHAIN_TRACING_V2", settings.langchain_tracing_v2)
+os.environ.setdefault("LANGCHAIN_API_KEY", settings.langchain_api_key)
+os.environ.setdefault("LANGCHAIN_PROJECT", settings.langchain_project)
 
 # ── Import the underlying implementation functions directly ────────────────────
 # We use the private _get_* functions, NOT the @tool-decorated LangChain
 # versions.  This avoids LangGraph overhead and the "StructuredTool does not
 # support sync invocation" issue that surfaces in tests.
-from agent.clients.market import MarketDataClient
+from agent.clients.market import get_shared_market_client
 from agent.tools.diversification import _analyze_diversification
 from agent.tools.fee_drag import _fee_drag
 from agent.tools.health_scorecard import _scorecard
@@ -74,7 +86,7 @@ log = structlog.get_logger()
 # ── Server singleton ───────────────────────────────────────────────────────────
 
 server = Server("fortio")
-_market_client = MarketDataClient()  # mirrors the module-level singleton in market.py
+_market_client = get_shared_market_client()
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -220,8 +232,12 @@ _TOOLS: list[types.Tool] = [
                 "date_range": {
                     "type": "string",
                     "enum": ["ytd", "1y", "5y", "max"],
-                    "description": "Time period for fee analysis.",
-                    "default": "max",
+                    "description": (
+                        "Time period for fee analysis. Defaults to '1y'. "
+                        "Use 'max' only when the user explicitly asks for lifetime/all-time fees — "
+                        "it is slow on large portfolios."
+                    ),
+                    "default": "1y",
                 },
             },
         },
@@ -327,6 +343,7 @@ async def list_tools() -> list[types.Tool]:
 
 # Dispatches a call_tool request from the MCP host to the matching private implementation function.
 @server.call_tool()
+@traceable(name="mcp_tool_call", run_type="tool")
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
     """Dispatch a tool call from the MCP host to the appropriate implementation."""
     log.info("mcp_tool_call", tool=name)
@@ -357,7 +374,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
                 )
             case "get_fee_drag_analysis":
                 result = await _fee_drag(
-                    date_range=arguments.get("date_range", "max"),
+                    date_range=arguments.get("date_range", "1y"),
                 )
             case "get_portfolio_health_scorecard":
                 result = await _scorecard()
