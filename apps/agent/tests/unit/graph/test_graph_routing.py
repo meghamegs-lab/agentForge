@@ -226,7 +226,9 @@ class TestToolResultCollectorNode:
         msg = _tool_message(payload)
         state = _make_state([msg], tool_results=[])
         result = tool_result_collector_node(state)
-        assert payload in result["tool_results"]
+        # _tool_call_id is injected for deduplication — strip it before comparing
+        stripped = [{k: v for k, v in r.items() if k != "_tool_call_id"} for r in result["tool_results"]]
+        assert payload in stripped
 
     def test_accumulates_with_existing_tool_results(self):
         existing = {"status": "ok", "symbol": "AAPL"}
@@ -234,8 +236,10 @@ class TestToolResultCollectorNode:
         msg = _tool_message(new_payload)
         state = _make_state([msg], tool_results=[existing])
         result = tool_result_collector_node(state)
-        assert existing in result["tool_results"]
-        assert new_payload in result["tool_results"]
+        # _tool_call_id is injected for deduplication — strip it before comparing
+        stripped = [{k: v for k, v in r.items() if k != "_tool_call_id"} for r in result["tool_results"]]
+        assert existing in stripped
+        assert new_payload in stripped
 
     def test_ignores_non_tool_messages(self):
         ai_msg = AIMessage(content='{"status": "ok"}')

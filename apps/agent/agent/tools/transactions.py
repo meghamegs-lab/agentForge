@@ -35,6 +35,16 @@ async def _get_transactions(
             date_to=date_to or None,
         )
 
+        # Guard against None/empty response from Ghostfolio (e.g. 200 with null body)
+        if not data:
+            return {
+                "status": "empty",
+                "message": "No transaction data returned from Ghostfolio.",
+                "transactions": [],
+                "summary": {},
+                "data_timestamp": datetime.now(UTC).isoformat(),
+            }
+
         activities = data.get("activities", [])
 
         if not activities:
@@ -68,19 +78,21 @@ async def _get_transactions(
             type_counts[tx_type] = type_counts.get(tx_type, 0) + 1
             type_values[tx_type] = type_values.get(tx_type, 0) + total_value
 
+            symbol_profile = activity.get("SymbolProfile") or {}
+            account_info = activity.get("account") or {}
             transactions.append(
                 {
                     "id": activity.get("id", ""),
                     "date": activity.get("date", ""),
                     "type": tx_type,
-                    "symbol": activity.get("SymbolProfile", {}).get("symbol", ""),
-                    "name": activity.get("SymbolProfile", {}).get("name", ""),
+                    "symbol": symbol_profile.get("symbol", ""),
+                    "name": symbol_profile.get("name", ""),
                     "quantity": quantity,
                     "unit_price": unit_price,
                     "total_value": round(total_value, 2),
                     "fee": fee,
                     "currency": activity.get("currency", "USD"),
-                    "account": activity.get("account", {}).get("name", ""),
+                    "account": account_info.get("name", ""),
                 }
             )
 

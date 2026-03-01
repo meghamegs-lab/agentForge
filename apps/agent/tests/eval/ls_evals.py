@@ -7,14 +7,18 @@ Results appear in the LangSmith UI so you can compare across runs / branches.
 
 Eval Types
 ----------
-1. correctness   — tool outputs match numeric ground truth            (6 examples)
-2. safety        — verification pipeline flags issues correctly       (5 examples)
-3. latency       — tool calls complete within time bounds             (4 examples)
-4. consistency   — same inputs → identical outputs (deterministic)   (3 examples)
-5. tool-keywords — tool docstrings contain LLM trigger keywords      (5 examples)
+1. correctness        — tool outputs match numeric ground truth       (6 examples)
+2. safety             — verification pipeline flags issues correctly  (5 examples)
+3. latency            — tool calls complete within time bounds        (4 examples)
+4. consistency        — same inputs → identical outputs              (3 examples)
+5. tool-keywords      — tool docstrings contain LLM trigger keywords (5 examples)
+6. llm-tool-selection — REAL LLM routes to correct tool              (6 examples)
+                        ⚠ costs ~$0.05–0.10 per run — ON DEMAND ONLY
 
-The first 4 evals use mocked HTTP (respx) — zero real network calls, no LLM cost.
-The tool-keywords eval checks source code quality, also no LLM.
+Evals 1–5 use mocked HTTP (respx) — zero real network calls, no LLM cost.
+They are safe to run on every CI commit.
+
+Eval 6 makes real LLM API calls and is intended for on-demand / pre-release runs.
 
 Prerequisites
 -------------
@@ -24,7 +28,10 @@ Prerequisites
 
 Run
 ---
-    # All evals (all are fast, no LLM):
+    # CI-safe evals only (no LLM cost, deterministic):
+    python tests/eval/ls_evals.py --ci
+
+    # All evals including LLM (costs ~$0.05–0.10):
     python tests/eval/ls_evals.py
 
     # Single eval type:
@@ -33,6 +40,7 @@ Run
     python tests/eval/ls_evals.py --only latency
     python tests/eval/ls_evals.py --only consistency
     python tests/eval/ls_evals.py --only tool-keywords
+    python tests/eval/ls_evals.py --only llm-tool-selection  # on-demand
 
     # Custom LangSmith experiment prefix (e.g. for a branch):
     python tests/eval/ls_evals.py --prefix feat/my-branch
@@ -49,7 +57,9 @@ import importlib
 import os
 import sys
 import time
+import uuid
 from typing import Any
+from unittest.mock import patch
 
 import httpx
 import respx
@@ -437,14 +447,17 @@ _SAFETY_EXAMPLES: list[dict] = [
         },
         "outputs": {"hallucination_flagged": True},
     },
-    # ── S-4: Number matches tool result → no hallucination flag ───────────────
+    # ── S-4: No financial numbers in response → no hallucination flag ─────────
+    # Note: the hallucination guard uses string-level comparison after JSON
+    # serialisation (e.g. 1750.50 → "1750.5"). Using a response without
+    # specific dollar amounts cleanly tests the "no flag" code path.
     {
         "metadata": {"eval_id": "safety-hallucination-clean"},
         "inputs": {
             "check": "hallucination",
-            "response": "Your portfolio value is $1,750.50.",
+            "response": "Your portfolio looks well diversified across multiple sectors.",
             "tool_results": [
-                {"current_value": 1750.50, "data_timestamp": "2024-01-01T00:00:00Z"}
+                {"status": "ok", "data_timestamp": "2024-01-01T00:00:00Z"}
             ],
         },
         "outputs": {"hallucination_flagged": False},
@@ -484,9 +497,14 @@ def _safety_target(inputs: dict) -> dict:
 
     if check == "hallucination":
         _, flags = check_hallucination(response, tool_results)
+        # POTENTIAL_HALLUCINATION fires when NO tools ran or ALL tools failed.
+        # UNSUPPORTED_CLAIM fires when a tool succeeded but the number isn't in its output.
+        # Both represent hallucination risk — treat either as "flagged".
         return {
-            "hallucination_flagged": any(f["type"] == "POTENTIAL_HALLUCINATION" for f in flags),
-            "flag_types":            [f["type"] for f in flags],
+            "hallucination_flagged": any(
+                f["type"] in ("POTENTIAL_HALLUCINATION", "UNSUPPORTED_CLAIM") for f in flags
+            ),
+            "flag_types": [f["type"] for f in flags],
         }
 
     if check == "concentration":
@@ -934,16 +952,212 @@ def run_tool_keywords_eval(client, experiment_prefix: str = "fortio") -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 6. LLM TOOL SELECTION EVAL
+#    "Does the real LLM pick the correct tool for each query type?"
+#    Makes REAL LLM API calls — costs money (~$0.05–0.10 per run).
+#    Requires ANTHROPIC_API_KEY (or OPENAI_API_KEY) in environment.
+#    Ghostfolio HTTP is still mocked — no real portfolio data needed.
+#
+#    Run on demand only:
+#        python tests/eval/ls_evals.py --only llm-tool-selection
+# ══════════════════════════════════════════════════════════════════════════════
+
+_LLM_HOLDINGS_RESP = {
+    "holdings": [
+        {
+            "symbol": "AAPL", "name": "Apple Inc.", "quantity": 10, "value": 1750.00,
+            "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "STOCK",
+            "sectors": [{"name": "Technology", "weight": 1.0}],
+            "countries": [{"name": "United States", "weight": 1.0}],
+        },
+        {
+            "symbol": "VTI", "name": "Vanguard Total Market ETF", "quantity": 20, "value": 4200.00,
+            "currency": "USD", "assetClass": "EQUITY", "assetSubClass": "ETF",
+            "sectors": [{"name": "Technology", "weight": 0.3}, {"name": "Healthcare", "weight": 0.7}],
+            "countries": [{"name": "United States", "weight": 1.0}],
+        },
+    ]
+}
+_LLM_PERF_RESP = {
+    "performance": {
+        "netPerformancePercentage": 0.1234, "netPerformance": 987.65,
+        "currentValueInBaseCurrency": 8987.65, "totalInvestment": 8000.00,
+        "currentNetWorth": 8987.65,
+    }
+}
+_LLM_ORDERS_RESP = {
+    "activities": [
+        {
+            "id": "t1", "date": "2024-01-15T00:00:00Z", "type": "BUY",
+            "SymbolProfile": {"symbol": "AAPL", "name": "Apple Inc."},
+            "quantity": 10, "unitPrice": 175.00, "fee": 4.99,
+            "currency": "USD", "Account": {"name": "Brokerage"},
+        },
+    ]
+}
+_LLM_MARKET_RESP = {
+    "symbol": "AAPL", "name": "Apple Inc.", "currency": "USD",
+    "price": 175.50, "change": 2.30, "changePercent": 1.33,
+    "marketCap": 2700000000000, "high52Week": 199.62, "low52Week": 124.17,
+}
+
+_LLM_TOOL_EXAMPLES: list[dict] = [
+    {
+        "metadata": {"eval_id": "llm-route-portfolio"},
+        "inputs": {"query": "What stocks do I currently own?", "expected_tool": "get_portfolio_summary"},
+        "outputs": {"tool_called": "get_portfolio_summary"},
+    },
+    {
+        "metadata": {"eval_id": "llm-route-performance"},
+        "inputs": {"query": "How is my portfolio performing this year?", "expected_tool": "get_performance"},
+        "outputs": {"tool_called": "get_performance"},
+    },
+    {
+        "metadata": {"eval_id": "llm-route-transactions"},
+        "inputs": {"query": "Show me my recent buy and sell transactions.", "expected_tool": "get_transactions"},
+        "outputs": {"tool_called": "get_transactions"},
+    },
+    {
+        "metadata": {"eval_id": "llm-route-diversification"},
+        "inputs": {"query": "How diversified is my portfolio across sectors?", "expected_tool": "analyze_diversification"},
+        "outputs": {"tool_called": "analyze_diversification"},
+    },
+    {
+        "metadata": {"eval_id": "llm-route-market"},
+        "inputs": {"query": "What is the current price of Apple stock (AAPL)?", "expected_tool": "get_market_data"},
+        "outputs": {"tool_called": "get_market_data"},
+    },
+    {
+        "metadata": {"eval_id": "llm-route-offtopic"},
+        "inputs": {"query": "What is the weather like in New York today?", "expected_tool": None},
+        "outputs": {"tool_called": None},
+    },
+]
+
+
+def _llm_tool_selection_target(inputs: dict) -> dict:
+    """
+    Invoke the full LangGraph agent with a real LLM and mocked Ghostfolio HTTP.
+    Returns which tool (if any) the LLM called first.
+    """
+    from langchain_core.messages import HumanMessage, ToolMessage  # noqa: PLC0415
+    from langgraph.checkpoint.memory import MemorySaver  # noqa: PLC0415
+
+    from agent.graph.graph import build_graph  # noqa: PLC0415
+    from agent.graph.state import AgentState  # noqa: PLC0415
+
+    query = inputs["query"]
+    graph = build_graph(checkpointer=MemorySaver())
+    thread_id = str(uuid.uuid4())
+    config = {"configurable": {"thread_id": thread_id, "user_id": "ls-eval-user"}}
+    state: AgentState = {
+        "messages": [HumanMessage(content=query)],
+        "tool_results": [], "verification_flags": [], "confidence": "HIGH",
+        "reasoning_steps": 0, "conversation_id": thread_id, "user_id": "ls-eval-user",
+        "final_response": "", "should_escalate": False, "turn_number": 0, "context_entities": {},
+    }
+
+    async def _run_graph():
+        return await graph.ainvoke(state, config=config)
+
+    mock_yf_info = {
+        "symbol": "AAPL", "currentPrice": 175.50, "marketCap": 2700000000000,
+        "fiftyTwoWeekHigh": 199.62, "fiftyTwoWeekLow": 124.17, "regularMarketChangePercent": 0.0133,
+    }
+
+    # assert_all_called=False: LLM may not call every Ghostfolio endpoint
+    # (depends on which tool is selected). Pass-through routes allow real
+    # Anthropic / OpenAI API calls — respx intercepts ALL httpx by default.
+    with respx.mock(assert_all_called=False) as router:
+        router.post(f"{BASE_URL}/api/v1/auth/anonymous").mock(
+            return_value=httpx.Response(200, json=_AUTH_RESP)
+        )
+        router.get(f"{BASE_URL}/api/v1/portfolio/holdings").mock(
+            return_value=httpx.Response(200, json=_LLM_HOLDINGS_RESP)
+        )
+        router.get(f"{BASE_URL}/api/v2/portfolio/performance").mock(
+            return_value=httpx.Response(200, json=_LLM_PERF_RESP)
+        )
+        router.get(f"{BASE_URL}/api/v1/order").mock(
+            return_value=httpx.Response(200, json=_LLM_ORDERS_RESP)
+        )
+        router.get(url__regex=rf"{BASE_URL}/api/v1/quote/.*").mock(
+            return_value=httpx.Response(200, json=_LLM_MARKET_RESP)
+        )
+        # Allow real LLM API calls to reach the network
+        router.route(url__regex=r"https://api\.anthropic\.com/.*").pass_through()
+        router.route(url__regex=r"https://api\.openai\.com/.*").pass_through()
+
+        with patch("yfinance.Ticker") as mock_ticker:
+            mock_ticker.return_value.info = mock_yf_info
+            final_state = asyncio.run(_run_graph())
+
+    # Extract first tool called
+    first_tool = None
+    for msg in final_state.get("messages", []):
+        if isinstance(msg, ToolMessage):
+            first_tool = msg.name
+            break
+
+    return {"tool_called": first_tool, "final_answer": final_state.get("final_response", "")}
+
+
+def _llm_tool_selection_evaluator(outputs: dict, reference_outputs: dict) -> dict:
+    """Score 1.0 if the LLM called the expected tool (or called no tool when None expected)."""
+    expected = reference_outputs.get("tool_called")
+    actual   = outputs.get("tool_called")
+    correct  = actual == expected
+    return {
+        "key":     "correct_tool_selected",
+        "score":   1.0 if correct else 0.0,
+        "comment": f"expected={expected!r} actual={actual!r}",
+    }
+
+
+def run_llm_tool_selection_eval(client, experiment_prefix: str = "fortio") -> None:
+    from langsmith import evaluate as ls_evaluate  # noqa: PLC0415
+
+    api_key = settings.anthropic_api_key or settings.openai_api_key
+    if not api_key:
+        print("\n── 6. LLM Tool Selection Eval ─── SKIPPED (no LLM API key) ──────────")
+        return
+
+    print("\n── 6. LLM Tool Selection Eval (REAL LLM CALLS) ─────────────────────────")
+    print("  ⚠  This eval makes real Anthropic/OpenAI API calls — expect ~$0.05–0.10 cost")
+
+    ds = _get_or_create_dataset(
+        client, "fortio-llm-tool-selection",
+        "Real LLM routing: does the agent pick the correct tool for each query type?",
+    )
+    _upsert_examples(client, ds.id, _LLM_TOOL_EXAMPLES)
+
+    results = ls_evaluate(
+        _llm_tool_selection_target,
+        data="fortio-llm-tool-selection",
+        evaluators=[_llm_tool_selection_evaluator],
+        experiment_prefix=experiment_prefix,
+        max_concurrency=1,   # serial — avoids Anthropic rate limits
+    )
+    avg, count = _avg_score(results, "correct_tool_selected")
+    print(f"  ✅ LLM Tool Selection score: {avg:.1%}  ({count} examples scored)")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Entry Point
 # ══════════════════════════════════════════════════════════════════════════════
 
 ALL_EVALS: dict[str, Any] = {
-    "correctness":   run_correctness_eval,
-    "safety":        run_safety_eval,
-    "latency":       run_latency_eval,
-    "consistency":   run_consistency_eval,
-    "tool-keywords": run_tool_keywords_eval,
+    "correctness":        run_correctness_eval,
+    "safety":             run_safety_eval,
+    "latency":            run_latency_eval,
+    "consistency":        run_consistency_eval,
+    "tool-keywords":      run_tool_keywords_eval,
+    # ↓ On-demand only — makes real LLM API calls (costs money)
+    "llm-tool-selection": run_llm_tool_selection_eval,
 }
+
+# Evals that are safe to run in CI (no LLM cost, fully deterministic).
+_CI_EVALS = {"correctness", "safety", "latency", "consistency", "tool-keywords"}
 
 
 def main() -> int:
@@ -952,12 +1166,14 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python tests/eval/ls_evals.py
+  python tests/eval/ls_evals.py --ci                          # CI-safe only (no LLM cost)
+  python tests/eval/ls_evals.py                               # all evals (includes LLM)
   python tests/eval/ls_evals.py --only correctness
   python tests/eval/ls_evals.py --only safety
   python tests/eval/ls_evals.py --only latency
   python tests/eval/ls_evals.py --only consistency
   python tests/eval/ls_evals.py --only tool-keywords
+  python tests/eval/ls_evals.py --only llm-tool-selection     # on-demand LLM eval
   python tests/eval/ls_evals.py --prefix feat/my-branch
         """.strip(),
     )
@@ -966,6 +1182,14 @@ Examples:
         choices=list(ALL_EVALS.keys()),
         metavar="TYPE",
         help=f"Run only this eval type. Choices: {', '.join(ALL_EVALS.keys())}",
+    )
+    parser.add_argument(
+        "--ci",
+        action="store_true",
+        help=(
+            "Run only CI-safe evals (no LLM API calls, no cost). "
+            "Excludes: llm-tool-selection."
+        ),
     )
     parser.add_argument(
         "--prefix",
@@ -996,7 +1220,12 @@ Examples:
     if client is None:
         return 1
 
-    to_run = {args.only: ALL_EVALS[args.only]} if args.only else dict(ALL_EVALS)
+    if args.only:
+        to_run = {args.only: ALL_EVALS[args.only]}
+    elif args.ci:
+        to_run = {k: v for k, v in ALL_EVALS.items() if k in _CI_EVALS}
+    else:
+        to_run = dict(ALL_EVALS)
 
     print(f"\n{'═' * 68}")
     print(f"  Fortio LangSmith Evals")

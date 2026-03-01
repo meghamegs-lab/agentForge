@@ -457,22 +457,22 @@ def run_verification_pipeline(
     """
     all_flags: list[VerificationFlag] = []
 
-    # 1. Disclaimer
-    response, flags = check_disclaimer(response, tool_results)
-    all_flags.extend(flags)
-    disclaimer_added = any(f["type"] == "DISCLAIMER_ADDED" for f in flags)
-
-    # 2. Hallucination guard
+    # 1. Hallucination guard
     response, flags = check_hallucination(response, tool_results)
     all_flags.extend(flags)
 
-    # 3. Freshness
+    # 2. Freshness
     response, flags = check_freshness(response, tool_results)
     all_flags.extend(flags)
 
-    # 4. Concentration
+    # 3. Concentration  ← runs before disclaimer so its block appears first
     response, flags = check_concentration(response, tool_results)
     all_flags.extend(flags)
+
+    # 4. Disclaimer  ← always last text appended, so "Not financial advice." is always the final line
+    response, flags = check_disclaimer(response, tool_results)
+    all_flags.extend(flags)
+    disclaimer_added = any(f["type"] == "DISCLAIMER_ADDED" for f in flags)
 
     # 5. Confidence scoring
     response, flags, confidence = check_confidence(response, tool_results, reasoning_steps)

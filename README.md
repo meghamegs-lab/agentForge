@@ -57,33 +57,116 @@ reasoning → tools → collect_results → reasoning (loop) → verify → END
 
 State is persisted per `conversation_id` in Postgres using LangGraph's `AsyncPostgresSaver`, so the LLM sees the full conversation history on every turn.
 
-### Eval Suite
-
-The agent ships with a comprehensive evaluation suite under [`apps/agent/tests/eval/`](./apps/agent/tests/eval/):
-
-| Eval file                                                                  | What it tests                                                                                                                 |
-| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| [`test_correctness.py`](./apps/agent/tests/eval/test_correctness.py)       | 12 tests — arithmetic accuracy, percentage conversions, sort order, currency handling, sector rollup                          |
-| [`test_tool_selection.py`](./apps/agent/tests/eval/test_tool_selection.py) | 10 tests — tool docstring coverage, domain boundary isolation, parameter mapping                                              |
-| [`test_edge_cases.py`](./apps/agent/tests/eval/test_edge_cases.py)         | 10 tests — dict vs list holdings format, zero-value holdings, missing fields, unicode names, large portfolios, invalid inputs |
-
-Run the evals:
-
-```bash
-cd apps/agent
-pytest tests/eval/ -v
-```
-
 ### Fortio Quick Start
 
-See [`apps/agent/README.md`](./apps/agent/README.md) for the full setup guide. In brief:
+See [`apps/agent/SETUP.md`](./apps/agent/SETUP.md) for the full 10-step setup guide. In brief:
 
 ```bash
 cd apps/agent
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
-cp .env.example .env   # fill in ANTHROPIC_API_KEY + GHOSTFOLIO_ACCESS_TOKEN
-uvicorn agent.api.main:app --port 8001  # FastAPI docs → http://localhost:8001/docs
+pip install -e .                        # installs the `fortio` CLI command
+cp .env.example .env                    # fill in ANTHROPIC_API_KEY + GHOSTFOLIO_ACCESS_TOKEN
+fortio serve                            # FastAPI docs → http://localhost:8001/docs
+```
+
+### CLI — `fortio` Command
+
+After `pip install -e .` the `fortio` CLI is available:
+
+| Command                    | What it does                                                           |
+| -------------------------- | ---------------------------------------------------------------------- |
+| `fortio ask "…"`           | Single question, prints answer, exits                                  |
+| `fortio ask "…" --verbose` | Same, plus tools called and confidence level                           |
+| `fortio chat`              | Interactive multi-turn REPL with `/help`, `/tools`, `/clear`           |
+| `fortio serve`             | Start the FastAPI server on port 8001                                  |
+| `fortio serve --reload`    | Dev mode with hot-reload                                               |
+| `fortio mcp`               | Start the MCP server (exposes all 11 tools to Claude Desktop / Cursor) |
+| `fortio demo`              | Run all 11 tools in sequence — one-command proof of functionality      |
+| `fortio version`           | Show active model, environment, and checkpoint config                  |
+
+```bash
+# Examples
+fortio ask "What does my portfolio look like?"
+fortio chat
+fortio demo
+fortio serve --reload
+```
+
+### MCP — Claude Desktop & Cursor Integration
+
+Fortio exposes all 11 portfolio tools as an MCP server, letting Claude Desktop and Cursor
+query your Ghostfolio data directly in their chat interfaces — no browser, no API keys in a chat box.
+
+**Start the MCP server:**
+
+```bash
+fortio mcp
+# stdout = MCP JSON-RPC wire; all human-readable output goes to stderr
+```
+
+**Claude Desktop** — edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "fortio": {
+      "command": "fortio",
+      "args": ["mcp"],
+      "env": {
+        "GHOSTFOLIO_BASE_URL": "http://localhost:3333",
+        "GHOSTFOLIO_ACCESS_TOKEN": "your-security-token"
+      }
+    }
+  }
+}
+```
+
+**Cursor** — Settings → MCP → Add server → paste the same JSON block.
+
+> **Using Railway?** Replace `http://localhost:3333` with your Railway Ghostfolio URL.
+
+The MCP server also exposes:
+
+- **3 resources** — `portfolio://summary`, `portfolio://performance`, `portfolio://health`
+- **1 prompt template** — `portfolio-analysis` with focus options: `risk` · `performance` · `fees` · `all`
+
+### Eval Suite
+
+The agent ships with **60+ evaluation tests** (all mocked — zero real API calls) plus a LangSmith experiment suite.
+
+| Eval file                                                                                     | What it tests                                                                   | Tests |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ----- |
+| [`tests/eval/test_correctness.py`](./apps/agent/tests/eval/test_correctness.py)               | Arithmetic accuracy, % conversions, sort order, fee sums, sector rollup         | 12    |
+| [`tests/eval/test_tool_selection.py`](./apps/agent/tests/eval/test_tool_selection.py)         | Tool docstring trigger keywords, domain boundary isolation, parameter mapping   | 10    |
+| [`tests/eval/test_llm_tool_selection.py`](./apps/agent/tests/eval/test_llm_tool_selection.py) | LLM-driven tool selection routing and keyword coverage                          | 14    |
+| [`tests/eval/test_tool_execution.py`](./apps/agent/tests/eval/test_tool_execution.py)         | Advanced tool happy path + error cases for all 6 advanced tools                 | 16    |
+| [`tests/eval/test_multi_step.py`](./apps/agent/tests/eval/test_multi_step.py)                 | Cross-tool consistency, referential integrity, multi-session monitor            | 12    |
+| [`tests/eval/test_edge_cases.py`](./apps/agent/tests/eval/test_edge_cases.py)                 | Dict vs list holdings, zero-value holdings, unicode names, large portfolios     | 10    |
+| [`tests/eval/test_adversarial.py`](./apps/agent/tests/eval/test_adversarial.py)               | Prompt injection, jailbreaks, off-topic deflection, fabricated number detection | 12    |
+| [`tests/eval/ls_evals.py`](./apps/agent/tests/eval/ls_evals.py)                               | LangSmith tracked experiments: correctness, safety, latency, consistency        | 23    |
+
+Run the evals:
+
+```bash
+cd apps/agent
+
+# All eval tests (fast, ~5–10 s, no network required)
+pytest tests/eval/ -v
+
+# All unit tests (mocked, no network)
+pytest tests/unit/ -v
+
+# Adversarial / safety tests
+pytest tests/adversarial/ -v
+
+# Full suite with coverage report
+pytest tests/unit/ tests/eval/ --cov=agent --cov-report=term-missing
+
+# LangSmith experiments (requires LANGCHAIN_API_KEY in .env)
+python tests/eval/ls_evals.py
+python tests/eval/ls_evals.py --only correctness
+python tests/eval/ls_evals.py --only safety
 ```
 
 ---

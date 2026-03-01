@@ -248,6 +248,52 @@
         }
       }
 
+      // ── Streaming cursor (blinking | after last token) ──
+      .streaming-cursor {
+        display: inline-block;
+        width: 2px;
+        height: 1em;
+        background: #ff6b35;
+        margin-left: 1px;
+        vertical-align: text-bottom;
+        border-radius: 1px;
+        animation: blink-cursor 0.75s step-end infinite;
+      }
+
+      // ── Active tool pills (shown while agent calls tools) ──
+      .streaming-tools {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+        margin-top: 0.35rem;
+
+        .streaming-tool-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.3rem;
+          padding: 0.15rem 0.6rem;
+          border-radius: 999px;
+          font-size: 0.72rem;
+          font-family: 'Courier New', monospace;
+          font-weight: 500;
+          background: rgba(255, 107, 53, 0.08);
+          border: 1px solid rgba(255, 107, 53, 0.35);
+          color: #c94a1a;
+          white-space: nowrap;
+
+          // Small spinning dot to indicate activity
+          .tool-spinner {
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            border: 1.5px solid rgba(201, 74, 26, 0.3);
+            border-top-color: #c94a1a;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+          }
+        }
+      }
+
       // ── Suggestion Chips (welcome message) ──
       .message-suggestions {
         display: flex;
@@ -413,6 +459,22 @@
           word-break: normal;
         }
       }
+    }
+  }
+
+  @keyframes blink-cursor {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
     }
   }
 
@@ -740,6 +802,21 @@
       background: #2a1a14 !important;
       border-color: rgba(255, 107, 53, 0.15) !important;
       color: rgba(255, 180, 140, 0.6) !important;
+    }
+
+    .streaming-cursor {
+      background: #ff8c42 !important;
+    }
+
+    .streaming-tool-pill {
+      background: rgba(255, 140, 66, 0.08) !important;
+      border-color: rgba(255, 140, 66, 0.3) !important;
+      color: #ff8c42 !important;
+
+      .tool-spinner {
+        border-color: rgba(255, 140, 66, 0.25) !important;
+        border-top-color: #ff8c42 !important;
+      }
     }
 
     .confidence-badge {

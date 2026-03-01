@@ -63,10 +63,27 @@
           }
 
           <div class="message-body">
-            <!-- Message text -->
-            <div class="message-bubble">
+            <!-- Message text (with blinking cursor while streaming) -->
+            <div
+              class="message-bubble"
+              [class.streaming-bubble]="message.isStreaming"
+            >
               {{ message.content }}
+              @if (message.isStreaming) {
+                <span aria-hidden="true" class="streaming-cursor"></span>
+              }
             </div>
+
+            <!-- Active tool pills — shown while the agent is calling tools -->
+            @if (message.activeTools && message.activeTools.length > 0) {
+              <div class="streaming-tools">
+                @for (tool of message.activeTools; track tool) {
+                  <span class="streaming-tool-pill">
+                    <span class="tool-spinner"></span> {{ tool }}
+                  </span>
+                }
+              </div>
+            }
 
             <!-- Clickable suggestion chips (welcome message) -->
             @if (message.suggestions && message.suggestions.length > 0) {
@@ -151,8 +168,9 @@
         </div>
       }
 
-      <!-- Loading indicator while agent is thinking -->
-      @if (isLoading) {
+      <!-- Loading spinner — only shown BEFORE the first token arrives.
+           Once streaming starts, the in-place streaming message takes over. -->
+      @if (isLoading && !isStreamingActive) {
         <div class="message message-assistant">
           <div class="message-avatar">
             <span class="avatar-label">AI</span>

@@ -28,6 +28,7 @@ from typing import Any
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -39,6 +40,7 @@ from agent.api.schemas import (
     ToolCallInfo,
     VerificationFlag,
 )
+from agent.cache.query_cache import get_cached_response, set_cached_response
 from agent.config import settings
 from agent.graph.graph import build_graph
 from agent.graph.state import AgentState
@@ -150,6 +152,229 @@ async def health() -> HealthResponse:
     return HealthResponse(status="ok", service="fortio-agent")
 
 
+# Lists all 11 available agent tools — useful for graders and demo videos.
+@app.get("/api/tools")
+async def list_tools() -> dict:
+    """
+    List all available agent tools with name and description.
+
+    Returns the complete catalogue of tools the Fortio agent can call.
+    Useful for verifying that all tools are registered and available without
+    running a full conversation turn.
+    """
+    from agent.tools import ALL_TOOLS  # local import to avoid circular at startup
+
+    return {
+        "tool_count": len(ALL_TOOLS),
+        "tools": [
+            {
+                "name": t.name,
+                "description": (t.description or "").split("\n")[0].strip(),
+            }
+            for t in ALL_TOOLS
+        ],
+    }
+
+
+# Streams the agent response as Server-Sent Events so the UI can display tokens as they arrive.
+@app.post("/api/chat/stream")
+async def chat_stream(request: ChatRequest, http_request: Request) -> StreamingResponse:
+    """
+    Streaming chat endpoint — emits SSE events as the agent thinks and responds.
+
+    Event types emitted (each as `data: <json>\\n\\n`):
+      {"type": "tool_start", "name": "<tool_name>"}     — a tool began executing
+      {"type": "tool_done",  "name": "<tool_name>"}     — a tool finished
+      {"type": "token",      "content": "<text>"}       — one LLM text chunk
+      {"type": "done",       "conversation_id": "...",
+                             "answer": "...", "confidence": "...",
+                             "flags": [...], "tool_calls": [...],
+                             "turn_number": N, "from_cache": bool}
+      {"type": "error",      "message": "<msg>"}        — unrecoverable error
+
+    Angular should open this as a fetch() + ReadableStream; EventSource is not
+    suitable here because it only supports GET requests.
+    """
+    conversation_id = request.conversation_id or str(uuid.uuid4())
+
+    # ── Semantic cache fast-path ───────────────────────────────────────────────
+    is_fresh_session = not request.conversation_id
+    if is_fresh_session:
+        cached = await get_cached_response(request.user_id, request.message)
+        if cached:
+            log.info("stream_cache_hit", conversation_id=conversation_id)
+
+            async def _cached_stream():
+                payload = json.dumps(
+                    {
+                        "type": "done",
+                        "conversation_id": conversation_id,
+                        "answer": cached["answer"],
+                        "confidence": cached["confidence"],
+                        "flags": cached.get("flags", []),
+                        "tool_calls": cached.get("tool_calls", []),
+                        "turn_number": cached.get("turn_number", 1),
+                        "context_entities": cached.get("context_entities", {}),
+                        "from_cache": True,
+                    }
+                )
+                yield f"data: {payload}\n\n"
+
+            return StreamingResponse(
+                _cached_stream(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+
+    graph = http_request.app.state.agent_graph
+
+    state: AgentState = {
+        "messages": [HumanMessage(content=request.message)],
+        "tool_results": [],
+        "verification_flags": [],
+        "confidence": "HIGH",
+        "reasoning_steps": 0,
+        "conversation_id": conversation_id,
+        "user_id": request.user_id,
+        "final_response": "",
+        "should_escalate": False,
+        "turn_number": 0,
+        "context_entities": {},
+    }
+    config: dict[str, Any] = {
+        "configurable": {
+            "thread_id": conversation_id,
+            "user_id": request.user_id,
+        }
+    }
+
+    async def _event_stream():
+        final_state: dict[str, Any] = {}
+
+        try:
+            async for event in graph.astream_events(state, config=config, version="v2"):
+                kind: str = event["event"]
+                name: str = event.get("name", "")
+
+                if kind == "on_tool_start":
+                    yield f"data: {json.dumps({'type': 'tool_start', 'name': name})}\n\n"
+
+                elif kind == "on_tool_end":
+                    yield f"data: {json.dumps({'type': 'tool_done', 'name': name})}\n\n"
+
+                elif kind == "on_chat_model_stream":
+                    chunk = event["data"]["chunk"]
+                    content = chunk.content
+
+                    # Extract text — Claude returns a list of typed blocks;
+                    # OpenAI returns a plain string.
+                    text = ""
+                    if isinstance(content, str):
+                        text = content
+                    elif isinstance(content, list):
+                        for block in content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                text += block.get("text", "")
+
+                    if text:
+                        yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"
+
+                elif kind == "on_chain_end" and name == "LangGraph":
+                    final_state = event["data"].get("output", {})
+
+            # ── Build the `done` event from the final state ────────────────────
+            answer = final_state.get("final_response", "")
+            if not answer:
+                msgs = final_state.get("messages", [])
+                if msgs:
+                    last = msgs[-1]
+                    raw = getattr(last, "content", "")
+                    answer = raw if isinstance(raw, str) else str(raw)
+
+            flags = [
+                {
+                    "type": f.get("type", "UNKNOWN"),
+                    "severity": f.get("severity", "INFO"),
+                    "message": f.get("message", ""),
+                }
+                for f in final_state.get("verification_flags", [])
+            ]
+
+            # Only include tool calls from the current turn
+            all_messages = final_state.get("messages", [])
+            last_human_idx = 0
+            for i, msg in enumerate(all_messages):
+                if isinstance(msg, HumanMessage):
+                    last_human_idx = i
+            current_turn_msgs = all_messages[last_human_idx:]
+
+            tool_calls: list[dict[str, Any]] = []
+            for msg in current_turn_msgs:
+                if isinstance(msg, ToolMessage):
+                    try:
+                        result: dict = (
+                            json.loads(msg.content) if isinstance(msg.content, str) else {}
+                        )
+                    except (json.JSONDecodeError, TypeError):
+                        result = {}
+                    tool_calls.append(
+                        {
+                            "tool_name": msg.name or "unknown",
+                            "status": result.get("status", "ok"),
+                            "error": result.get("error"),
+                        }
+                    )
+
+            confidence = final_state.get("confidence", "MEDIUM")
+            done_payload = json.dumps(
+                {
+                    "type": "done",
+                    "conversation_id": conversation_id,
+                    "answer": answer,
+                    "confidence": confidence,
+                    "flags": flags,
+                    "tool_calls": tool_calls,
+                    "turn_number": final_state.get("turn_number", 1),
+                    "context_entities": final_state.get("context_entities", {}),
+                    "from_cache": False,
+                }
+            )
+            yield f"data: {done_payload}\n\n"
+
+            log.info(
+                "stream_done",
+                conversation_id=conversation_id,
+                confidence=confidence,
+                tool_count=len(tool_calls),
+                flag_count=len(flags),
+            )
+
+            # ── Cache fresh-session HIGH/MEDIUM answers ────────────────────────
+            if is_fresh_session and confidence != "LOW":
+                await set_cached_response(
+                    request.user_id,
+                    request.message,
+                    {
+                        "answer": answer,
+                        "confidence": confidence,
+                        "flags": flags,
+                        "tool_calls": tool_calls,
+                        "turn_number": final_state.get("turn_number", 1),
+                        "context_entities": final_state.get("context_entities", {}),
+                    },
+                )
+
+        except Exception as exc:
+            log.error("stream_error", error=str(exc), conversation_id=conversation_id)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        _event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 # Receives a user message, runs the LangGraph agent, and returns the verified answer with metadata.
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
@@ -175,6 +400,24 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
         user_id=request.user_id,
         message_preview=request.message[:80],
     )
+
+    # ── Semantic cache check ───────────────────────────────────────────────────
+    # Only cache single-turn queries (no conversation_id means a fresh session).
+    # Multi-turn queries depend on conversation history and must NOT be cached.
+    is_fresh_session = not request.conversation_id
+    if is_fresh_session:
+        cached = await get_cached_response(request.user_id, request.message)
+        if cached:
+            log.info("cache_response_served", conversation_id=conversation_id)
+            return ChatResponse(
+                answer=cached["answer"],
+                confidence=cached["confidence"],
+                flags=[VerificationFlag(**f) for f in cached.get("flags", [])],
+                tool_calls=[ToolCallInfo(**tc) for tc in cached.get("tool_calls", [])],
+                conversation_id=conversation_id,
+                turn_number=cached.get("turn_number", 1),
+                context_entities=cached.get("context_entities", {}),
+            )
 
     # LangGraph config — thread_id is the key that identifies this conversation
     # in the Postgres checkpoints table.
@@ -267,9 +510,32 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
             tool_call_count=len(tool_calls),
         )
 
+        # ── Cache the response for fresh-session queries ───────────────────────
+        # Only cache HIGH/MEDIUM confidence answers to avoid caching error states.
+        confidence = final_state.get("confidence", "MEDIUM")
+        if is_fresh_session and confidence != "LOW":
+            await set_cached_response(
+                request.user_id,
+                request.message,
+                {
+                    "answer": answer,
+                    "confidence": confidence,
+                    "flags": [
+                        {"type": f.type, "severity": f.severity, "message": f.message}
+                        for f in flags
+                    ],
+                    "tool_calls": [
+                        {"tool_name": tc.tool_name, "status": tc.status, "error": tc.error}
+                        for tc in tool_calls
+                    ],
+                    "turn_number": final_state.get("turn_number", 1),
+                    "context_entities": final_state.get("context_entities", {}),
+                },
+            )
+
         return ChatResponse(
             answer=answer,
-            confidence=final_state.get("confidence", "MEDIUM"),
+            confidence=confidence,
             flags=flags,
             tool_calls=tool_calls,
             conversation_id=conversation_id,

@@ -50,10 +50,15 @@ _HOLDINGS_BODY = {
     ]
 }
 
+# Ghostfolio v2 flat performance format — one object per range request (no nested period keys).
+# netPerformancePercentage is a decimal fraction: 0.12 = 12%.
 _PERF_BODY = {
     "performance": {
-        "ytd": {"relativeChange": 0.12, "absoluteChange": 900.0, "currentValue": 8900.0},
-        "1y":  {"relativeChange": 0.22, "absoluteChange": 1600.0, "currentValue": 8900.0},
+        "netPerformancePercentage": 0.12,
+        "netPerformance": 900.0,
+        "currentValueInBaseCurrency": 8900.0,
+        "totalInvestment": 8000.0,
+        "currentNetWorth": 8900.0,
     }
 }
 
