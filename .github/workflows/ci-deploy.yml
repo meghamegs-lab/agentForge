@@ -112,6 +112,21 @@ jobs:
           LOG_LEVEL: 'WARNING'
           PYTHONPATH: '.'
 
+      - name: Bounty eval tests — FIRE Goal Tracker (advisory)
+        run: pytest tests/evalsBounty/ --no-cov -v
+        continue-on-error: true # advisory — won't block deploy
+        env:
+          ANTHROPIC_API_KEY: 'test-dummy-key-not-real'
+          OPENAI_API_KEY: 'test-dummy-key-not-real'
+          GHOSTFOLIO_BASE_URL: 'https://ghostfol.io'
+          GHOSTFOLIO_ACCESS_TOKEN: 'test-dummy-token'
+          LANGCHAIN_TRACING_V2: 'false'
+          LANGCHAIN_API_KEY: 'test-dummy'
+          LANGCHAIN_PROJECT: 'fortio-agent-ci'
+          ENVIRONMENT: 'test'
+          LOG_LEVEL: 'WARNING'
+          PYTHONPATH: '.'
+
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         if: always()

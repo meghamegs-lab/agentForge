@@ -37,6 +37,8 @@ from agent.api.schemas import (
     ChatRequest,
     ChatResponse,
     HealthResponse,
+    RetirementGoalRequest,
+    RetirementGoalResponse,
     ToolCallInfo,
     VerificationFlag,
 )
@@ -107,6 +109,18 @@ async def lifespan(app: FastAPI):
             backend="memory",
         )
         app.state.agent_graph = build_graph(checkpointer=MemorySaver())
+
+    # ── FIRE Goal Tracker: create retirement_goals table if feature is enabled ──
+    if settings.fire_tracker_enabled:
+        from agent.db.retirement import create_table_if_not_exists  # noqa: PLC0415
+
+        await create_table_if_not_exists(settings.database_url)
+        log.info("fire_tracker_enabled", message="FIRE Goal Tracker is active")
+    else:
+        log.info(
+            "fire_tracker_disabled",
+            message="FIRE Goal Tracker is off (set FIRE_TRACKER_ENABLED=true to enable)",
+        )
 
     try:
         yield  # App is running — /health and /api/chat are now served
@@ -566,3 +580,144 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
             ],
             conversation_id=conversation_id,
         )
+
+
+# ── FIRE Goal Tracker — CRUD Routes ───────────────────────────────────────────
+# All four routes return HTTP 404 when FIRE_TRACKER_ENABLED is false.
+# This way, existing deployments are completely unaffected until the flag is set.
+
+from fastapi import HTTPException  # noqa: E402 (imported here to keep it near FIRE routes)
+
+
+def _require_fire_tracker() -> None:
+    """Raise HTTP 404 if the FIRE tracker feature flag is not enabled."""
+    if not settings.fire_tracker_enabled:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "FIRE Goal Tracker is not enabled. "
+                "Set FIRE_TRACKER_ENABLED=true in .env and restart."
+            ),
+        )
+
+
+@app.post("/api/goals/retirement", response_model=RetirementGoalResponse, tags=["FIRE Goals"])
+async def create_or_update_retirement_goal(
+    request: RetirementGoalRequest,
+    user_id: str = "anonymous",
+) -> RetirementGoalResponse:
+    """
+    Create or update a retirement goal for a user.
+
+    This is an upsert — if the user already has a goal it is updated; otherwise a new one
+    is created.  The FIRE number (total portfolio needed) is computed server-side as:
+        fire_number = target_annual_spending / safe_withdrawal_rate
+
+    Set the 'user_id' query parameter to scope the goal to a specific user.
+    """
+    _require_fire_tracker()
+    from agent.db.retirement import upsert_goal, validate_goal_fields  # noqa: PLC0415
+
+    errors = validate_goal_fields(
+        request.current_age,
+        request.target_retirement_age,
+        request.target_annual_spending,
+        request.safe_withdrawal_rate,
+    )
+    if errors:
+        return RetirementGoalResponse(
+            status="validation_error",
+            user_id=user_id,
+            errors=errors,
+            message="Validation failed: " + "; ".join(errors),
+        )
+
+    try:
+        saved = await upsert_goal(
+            database_url=settings.database_url,
+            user_id=user_id,
+            current_age=request.current_age,
+            target_retirement_age=request.target_retirement_age,
+            target_annual_spending=request.target_annual_spending,
+            safe_withdrawal_rate=request.safe_withdrawal_rate,
+            monthly_contribution=request.monthly_contribution,
+            expected_annual_return=request.expected_annual_return,
+            social_security_estimate=request.social_security_estimate,
+        )
+        log.info("api_retirement_goal_saved", user_id=user_id)
+        return RetirementGoalResponse(
+            status="saved",
+            user_id=user_id,
+            goal=saved,
+            message=f"Goal saved. FIRE number: ${saved['fire_number']:,.0f}",
+        )
+    except Exception as e:
+        log.error("api_retirement_goal_save_error", user_id=user_id, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.get(
+    "/api/goals/retirement/{user_id}", response_model=RetirementGoalResponse, tags=["FIRE Goals"]
+)
+async def get_retirement_goal_route(user_id: str) -> RetirementGoalResponse:
+    """
+    Retrieve the stored retirement goal for a user.
+
+    Returns the goal including the computed FIRE number, years to target,
+    and all stored fields (ages, spending target, SWR, contributions, etc.).
+    Returns status='not_found' if the user has not set a goal yet.
+    """
+    _require_fire_tracker()
+    from agent.db.retirement import get_goal  # noqa: PLC0415
+
+    try:
+        goal = await get_goal(settings.database_url, user_id)
+        if goal is None:
+            return RetirementGoalResponse(
+                status="not_found",
+                user_id=user_id,
+                message="No retirement goal found. Use POST /api/goals/retirement to create one.",
+            )
+        return RetirementGoalResponse(status="ok", user_id=user_id, goal=goal)
+    except Exception as e:
+        log.error("api_retirement_goal_get_error", user_id=user_id, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.put(
+    "/api/goals/retirement/{user_id}", response_model=RetirementGoalResponse, tags=["FIRE Goals"]
+)
+async def update_retirement_goal_route(
+    user_id: str,
+    request: RetirementGoalRequest,
+) -> RetirementGoalResponse:
+    """
+    Update an existing retirement goal for a user.
+
+    Behaves identically to POST (upsert) — included separately for RESTful semantics.
+    All fields in the request body replace the stored values.
+    """
+    _require_fire_tracker()
+    # Delegate to the POST handler (both are upserts)
+    return await create_or_update_retirement_goal(request, user_id=user_id)
+
+
+@app.delete(
+    "/api/goals/retirement/{user_id}", response_model=RetirementGoalResponse, tags=["FIRE Goals"]
+)
+async def delete_retirement_goal_route(user_id: str) -> RetirementGoalResponse:
+    """
+    Delete the retirement goal for a user.
+
+    Returns status='deleted' if a goal existed and was removed.
+    Returns status='not_found' if the user had no goal.
+    """
+    _require_fire_tracker()
+    from agent.tools.retirement import delete_retirement_goal_for_user  # noqa: PLC0415
+
+    result = await delete_retirement_goal_for_user(user_id)
+    return RetirementGoalResponse(
+        status=result["status"],
+        user_id=user_id,
+        message=result.get("error", ""),
+    )

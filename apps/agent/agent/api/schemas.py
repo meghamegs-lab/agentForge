@@ -56,3 +56,56 @@ class ChatResponse(BaseModel):
     context_entities: dict[
         str, list[str]
     ] = {}  # Entities tracked across turns {"tickers": [...], "sectors": [...]}
+
+
+# ── FIRE Goal Tracker — CRUD Schemas ──────────────────────────────────────────
+# Used by GET/POST/PUT/DELETE /api/goals/retirement endpoints.
+
+
+class RetirementGoalRequest(BaseModel):
+    """
+    Request body for POST /api/goals/retirement and PUT /api/goals/retirement/{user_id}.
+
+    All monetary values are in USD. Rates are decimals (e.g. 0.04 = 4%).
+    """
+
+    current_age: int
+    """User's current age (18–100)."""
+
+    target_retirement_age: int
+    """Age the user wants to retire (must be > current_age)."""
+
+    target_annual_spending: float
+    """How much the user wants to spend per year in retirement (USD > 0)."""
+
+    safe_withdrawal_rate: float = 0.04
+    """Annual withdrawal rate as a decimal. Default 0.04 = 4% (the 'Four Percent Rule')."""
+
+    monthly_contribution: float = 0.0
+    """How much the user adds to their investment portfolio each month (USD ≥ 0)."""
+
+    expected_annual_return: float = 0.07
+    """Expected annual portfolio return as a decimal. Default 0.07 = 7% (historical S&P avg)."""
+
+    social_security_estimate: float = 0.0
+    """Expected annual Social Security income in retirement (USD ≥ 0)."""
+
+
+class RetirementGoalResponse(BaseModel):
+    """
+    Response body for all /api/goals/retirement endpoints.
+    The fire_number (= annual_spending / SWR) is computed server-side.
+    """
+
+    status: str
+    """'ok', 'not_found', 'saved', 'deleted', 'validation_error', or 'error'."""
+
+    user_id: str = ""
+    goal: dict = {}
+    """The full retirement goal record, including computed fire_number and years_to_target."""
+
+    message: str = ""
+    """Human-readable summary or error description."""
+
+    errors: list[str] = []
+    """Validation errors (only present when status='validation_error')."""

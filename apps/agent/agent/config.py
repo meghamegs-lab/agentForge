@@ -124,6 +124,15 @@ class Settings(BaseSettings):
     market_data_freshness_minutes: int = 15
     max_tool_retries: int = 2
 
+    # ── FIRE Goal Tracker (optional add-on) ──────────────────────────────────
+    # Set FIRE_TRACKER_ENABLED=true in .env to activate the retirement planning feature.
+    # When false (default): no DB table is created, no tools are registered,
+    # no FRED API calls are ever made — safe to deploy without any .env change.
+    fire_tracker_enabled: bool = False
+    # Free FRED API key — sign up at https://fred.stlouisfed.org/docs/api/api_key.html
+    # Required when fire_tracker_enabled=true. If empty, get_macro_data returns an error.
+    fred_api_key: str = ""
+
     # ── Optimisation knobs ────────────────────────────────────────────────────
     # 1. Tool schema compression — strip verbose Args/Returns/Use-this-when sections
     #    from tool descriptions sent to the LLM. Saves ~40% of the 3,161 tool-schema
