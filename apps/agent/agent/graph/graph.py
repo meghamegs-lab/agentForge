@@ -42,8 +42,18 @@ from agent.verification import run_verification_pipeline
 
 
 # Builds the primary LLM (Claude or GPT-4o fallback) with all tools bound — called once at module import.
-def _build_llm():
-    """Build the LLM with all tools bound. Called exactly once."""
+def _build_llm(force_tools: bool = False):
+    """
+    Build the LLM with all tools bound.
+
+    Args:
+        force_tools: When True, sets tool_choice to "any" (Anthropic) or
+                     "required" (OpenAI), forcing the model to call at least
+                     one tool before responding.  Used on the first reasoning
+                     step of every turn to prevent the LLM from answering
+                     finance questions directly from training data or stale
+                     conversation context.
+    """
     # Use compressed schemas when binding to the LLM (saves ~40% of the 3,161-token
     # tool-schema footprint). ToolNode still receives the full originals for execution.
     tools_for_llm = (
@@ -51,23 +61,31 @@ def _build_llm():
     )
 
     if settings.anthropic_api_key:
-        return ChatAnthropic(
+        llm = ChatAnthropic(
             model=settings.primary_model,
             api_key=settings.anthropic_api_key,
             temperature=0,
             max_tokens=2048,  # raised from 1024 — gives the model enough room to reason
             # through tool selection with 11 tools bound; 1024 was
             # causing silent truncation before tool_calls were emitted
-        ).bind_tools(tools_for_llm)
-    return ChatOpenAI(
+        )
+        # Anthropic: "any" = must call at least one tool; "auto" = model decides
+        tool_choice = "any" if force_tools else "auto"
+        return llm.bind_tools(tools_for_llm, tool_choice=tool_choice)
+
+    llm = ChatOpenAI(
         model=settings.fallback_model,
         api_key=settings.openai_api_key,
         temperature=0,
         max_tokens=1024,
-    ).bind_tools(tools_for_llm)
+    )
+    # OpenAI: "required" = must call at least one function; "auto" = model decides
+    tool_choice = "required" if force_tools else "auto"
+    return llm.bind_tools(tools_for_llm, tool_choice=tool_choice)
 
 
-_llm = _build_llm()  # ← module-level singleton
+_llm = _build_llm(force_tools=False)  # synthesis / free-form: model decides
+_llm_force_tools = _build_llm(force_tools=True)  # first reasoning step: MUST call a tool
 _log = structlog.get_logger()
 
 # ── Jailbreak / off-topic detection ───────────────────────────────────────────
@@ -115,6 +133,108 @@ _JAILBREAK_REFUSAL = (
 
 # Maximum tool-reasoning loops before forcing verification (prevents infinite loops)
 _MAX_REASONING_STEPS: int = 5
+
+# ── Finance-domain classifier ──────────────────────────────────────────────────
+# Used to gate `_llm_force_tools` on the first reasoning step.
+# Only finance-related queries trigger tool_choice="any"/"required" — off-topic
+# queries (weather, recipes, coding help) keep tool_choice="auto" so the LLM
+# can respond directly without wastefully calling a Ghostfolio endpoint.
+#
+# Deliberately broad: a false-positive (forcing a tool on an edge-case finance
+# query) is harmless; a false-negative (missing a real finance query) risks
+# the LLM answering from training data → hallucination.
+_FINANCE_KEYWORDS: frozenset[str] = frozenset(
+    {
+        # Portfolio composition
+        "portfolio",
+        "holding",
+        "holdings",
+        "position",
+        "positions",
+        "allocation",
+        "diversif",
+        "i own",
+        "i hold",
+        "what do i own",
+        # Performance & time-period queries
+        "performance",
+        "return",
+        "returns",
+        "gain",
+        "loss",
+        "profit",
+        "ytd",
+        "mtd",
+        "wtd",
+        "year-to-date",
+        "month-to-date",
+        # Price & value queries
+        "price",
+        "worth",
+        "market cap",
+        # Transaction queries
+        "transaction",
+        "transactions",
+        "trade",
+        "trades",
+        "dividend",
+        "dividends",
+        "fee",
+        "fees",
+        "expense",
+        # Asset class keywords
+        "stock",
+        "stocks",
+        "etf",
+        "etfs",
+        "fund",
+        "funds",
+        "bond",
+        "bonds",
+        "equity",
+        "equities",
+        "crypto",
+        "bitcoin",
+        "share",
+        "shares",
+        "ticker",
+        # Analysis keywords
+        "sector",
+        "rebalance",
+        "rebalancing",
+        "concentration",
+        "scorecard",
+        "health score",
+        "risk",
+        # Investment
+        "invest",
+        "investing",
+        "investment",
+        # Dollar sign
+        "$",
+    }
+)
+
+
+def _is_finance_query(messages: list) -> bool:
+    """
+    Return True if the most recent HumanMessage contains finance-domain keywords.
+
+    Used to decide whether to force tool use (_llm_force_tools) or allow a
+    free-form response (_llm) on the first reasoning step of a turn.
+
+    Only the most recent HumanMessage is checked — prior-turn messages are
+    irrelevant to whether the *current* query is finance-related.
+
+    Deliberately broad: a false-positive (forcing a tool on a borderline
+    finance query) is harmless; a false-negative (missing a real finance
+    query) risks the LLM answering from training data → hallucination.
+    """
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            text = str(msg.content).lower()
+            return any(kw in text for kw in _FINANCE_KEYWORDS)
+    return False
 
 
 # ── Sliding-window history helper ─────────────────────────────────────────────
@@ -450,8 +570,33 @@ async def reasoning_node(state: AgentState) -> dict[str, Any]:
     # so the LLM can still synthesise this turn's fresh tool results.
     history = _redact_prior_tool_messages(history)
 
+    # ── Choose LLM based on turn state and query domain ──────────────────────
+    # _llm_force_tools (tool_choice="any"/"required") is used ONLY when BOTH:
+    #   1. No tools have run yet this turn (first reasoning step), AND
+    #   2. The query is finance-related (contains portfolio/price/etc. keywords)
+    #
+    # This prevents forcing tool calls on off-topic queries (weather, recipes,
+    # coding help) while still blocking the LLM from answering finance questions
+    # directly from training data or stale conversation context.
+    #
+    # After tools have run (synthesis step), _llm (auto) is always used so the
+    # LLM can freely compose its answer from the fresh tool results.
+    last_human_idx = 0
+    for i, msg in enumerate(state["messages"]):
+        if isinstance(msg, HumanMessage):
+            last_human_idx = i
+
+    current_turn_has_tool_results = any(
+        isinstance(msg, ToolMessage) for msg in state["messages"][last_human_idx + 1 :]
+    )
+
+    is_first_step = not current_turn_has_tool_results
+    active_llm = (
+        _llm_force_tools if is_first_step and _is_finance_query(state["messages"]) else _llm
+    )
+
     messages = [SystemMessage(content=system_content)] + history
-    response = await _llm.ainvoke(messages)
+    response = await active_llm.ainvoke(messages)
 
     return {
         "messages": [response],
