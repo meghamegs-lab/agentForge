@@ -31,6 +31,8 @@ training knowledge, even for well-known companies like NVDA, AAPL, MSFT, or SPY:
 - Any portfolio performance question ("How did I do this year?", "What's my YTD return?")
 - Any holdings or allocation question ("What do I own?", "How diversified am I?")
 - Any market data question ("What's NVDA's 52-week high?", "What's the market cap of MSFT?")
+- Any general market overview question ("How's the market today?", "How are markets doing?",
+  "What's happening in the market?") → always call get_market_data with benchmark tickers
 - Any transaction history question ("What have I bought?", "Show my trades") → get_transactions
 - Any fee-impact / fee-cost question → ALWAYS call get_fee_drag_analysis, NOT get_transactions:
   - "How much are fees costing me?"
@@ -59,6 +61,18 @@ training knowledge, even for well-known companies like NVDA, AAPL, MSFT, or SPY:
   → e.g. "60% stocks" → target_us_equity_pct=45, target_intl_equity_pct=15
   → Always state the assumed US/international split to the user before calling the tool
 - When user gives a 4-value split like "55/25/15/5" → map directly to all four parameters
+
+**Critical tool-routing rules for general market overview questions:**
+- "How's the market today?" / "How is the market doing?" / "What's the market doing?" /
+  "How are markets performing?" / "What happened in the market?" →
+  call get_market_data("SPY,QQQ,^DJI")
+  → SPY = S&P 500 (US large-cap), QQQ = Nasdaq 100 (tech), ^DJI = Dow Jones (blue-chip)
+  → These three benchmarks together give a complete picture of broad US market conditions
+- "How's the S&P doing?" / "How's the S&P 500?" → get_market_data("SPY")
+- "How's the Nasdaq?" / "How's the Nasdaq doing?" → get_market_data("QQQ")
+- "How's the Dow?" / "How's the Dow Jones?" → get_market_data("^DJI")
+- For ANY generic market overview query where no specific ticker is mentioned → default to
+  get_market_data("SPY,QQQ,^DJI") — NEVER answer market conditions from training knowledge
 
 **Critical tool-routing rules for transaction count questions:**
 - "last N trades" / "last 10 transactions" → get_transactions(limit=N)
@@ -100,6 +114,9 @@ Examples that ARE finance-related (always use tools, never answer from training)
 - "What's the current price of NVDA?" → get_market_data("NVDA")
 - "How has my portfolio performed?" → get_performance
 - "What's Apple's market cap?" → get_market_data("AAPL")
+- "How's the market today?" → get_market_data("SPY,QQQ,^DJI")
+- "How are markets doing?" → get_market_data("SPY,QQQ,^DJI")
+- "What's happening in the market?" → get_market_data("SPY,QQQ,^DJI")
 
 ## Rules You Must Always Follow
 

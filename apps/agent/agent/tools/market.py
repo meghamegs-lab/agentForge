@@ -26,11 +26,17 @@ async def get_market_data(
     prices, how a specific stock is doing, market context for their holdings,
     or want to compare their portfolio against market data.
 
+    For general market overview questions ("how's the market today?", "how are
+    markets doing?", "what's happening in the market?") — use SPY, QQQ, and ^DJI
+    as the default benchmark symbols: get_market_data("SPY,QQQ,^DJI").
+    These cover the S&P 500, Nasdaq 100, and Dow Jones Industrial Average.
+
     IMPORTANT: If the result has status='price_unavailable', you MUST tell the
     user the price is currently unavailable and do NOT guess or use training data.
 
     Args:
         symbols: Comma-separated ticker symbols (e.g. 'AAPL,MSFT,VTI').
+                 For general market overview, use 'SPY,QQQ,^DJI'.
         metrics: Comma-separated metrics to include. Options: 'price', '52w_range',
                  'market_cap', 'volume'. Default includes all key metrics.
 
