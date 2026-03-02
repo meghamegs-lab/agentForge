@@ -493,7 +493,7 @@ def check_concentration(
         warning_lines = "\n".join(f"  • {w['message']}" for w in concentration_warnings)
         response += (
             f"\n\n🔔 **Concentration Risk Detected:**\n{warning_lines}\n"
-            f"Consider diversifying to reduce single-position risk."
+            f"Spreading holdings across more assets can help reduce single-position risk."
         )
 
     return response, flags
@@ -514,6 +514,21 @@ PREDICTION_KEYWORDS = {
     "might",
     "could reach",
 }
+
+# Pre-compiled word-boundary regex for prediction keywords.
+# Uses \b so "expect" does NOT match inside "expected", "will" does NOT match
+# inside "withdrawal", "might" does NOT match inside "might've", etc.
+# This prevents false-positive LOW confidence on FIRE tool responses that
+# legitimately contain phrases like "expected 7% annual returns".
+_PREDICTION_KW_RE = re.compile(
+    r"\b(?:"
+    + "|".join(
+        re.escape(kw).replace(r"\ ", r"\s+")
+        for kw in sorted(PREDICTION_KEYWORDS, key=len, reverse=True)
+    )
+    + r")\b",
+    re.IGNORECASE,
+)
 
 HEDGING_KEYWORDS = {
     # These indicate genuine data uncertainty — worth flagging as MEDIUM confidence.
@@ -564,8 +579,10 @@ def check_confidence(
     flags: list[VerificationFlag] = []
     response_lower = response.lower()
 
-    # Detect prediction language
-    has_predictions = any(kw in response_lower for kw in PREDICTION_KEYWORDS)
+    # Detect prediction language — use word-boundary regex so substrings like
+    # "expected" (inside "expected annual return") don't false-fire on "expect",
+    # and "withdrawal" doesn't false-fire on "will".
+    has_predictions = bool(_PREDICTION_KW_RE.search(response))
     has_hedging = any(kw in response_lower for kw in HEDGING_KEYWORDS)
     has_speculative = any(kw in response_lower for kw in SPECULATIVE_KEYWORDS)
     has_tool_data = len(tool_results) > 0

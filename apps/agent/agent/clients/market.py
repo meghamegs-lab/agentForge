@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import yfinance as yf
 from tenacity import RetryError, retry, stop_after_attempt, wait_exponential
@@ -80,13 +81,21 @@ class MarketDataClient:
 
         current_price = float(hist["Close"].iloc[-1])
 
-        # Use the actual last-bar timestamp from yfinance so the freshness checker
-        # correctly identifies weekend/holiday prices as stale rather than reporting
-        # them as brand-new. On weekends, hist.index[-1] is Friday's close, not today.
+        # Anchor data_timestamp to market close (4 PM ET) on the bar's date so the
+        # freshness checker reports an accurate age. yfinance daily bars are indexed
+        # at midnight ET (05:00 UTC), not at the 4 PM ET close, which would inflate
+        # the reported age by ~16 hours on weekends.
+        # On weekends, hist.index[-1] is Friday's bar → we set the timestamp to
+        # Friday 4 PM ET so the age reflects time since the actual last close.
         try:
-            data_timestamp = hist.index[-1].tz_convert("UTC").isoformat()
+            bar_date = hist.index[-1].date()
+            ET = ZoneInfo("America/New_York")
+            market_close = datetime(
+                bar_date.year, bar_date.month, bar_date.day, 16, 0, 0, tzinfo=ET
+            )
+            data_timestamp = market_close.astimezone(UTC).isoformat()
         except Exception:
-            # Fallback: if the index is not tz-aware or conversion fails, use now()
+            # Fallback: if date extraction or timezone conversion fails, use now()
             data_timestamp = datetime.now(UTC).isoformat()
 
         return {

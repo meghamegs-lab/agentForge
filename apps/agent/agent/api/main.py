@@ -42,7 +42,7 @@ from agent.api.schemas import (
     ToolCallInfo,
     VerificationFlag,
 )
-from agent.cache.query_cache import get_cached_response, set_cached_response
+from agent.cache.query_cache import get_cached_response, response_is_cacheable, set_cached_response
 from agent.config import settings
 from agent.graph.graph import build_graph
 from agent.graph.state import AgentState
@@ -364,7 +364,10 @@ async def chat_stream(request: ChatRequest, http_request: Request) -> StreamingR
             )
 
             # ── Cache fresh-session HIGH/MEDIUM answers ────────────────────────
-            if is_fresh_session and confidence != "LOW":
+            # Skip caching if any FIRE/retirement tool was used — those responses
+            # reflect mutable DB state (goals, live portfolio, FRED data) that
+            # changes as soon as the user sets or updates their retirement goal.
+            if is_fresh_session and confidence != "LOW" and response_is_cacheable(tool_calls):
                 await set_cached_response(
                     request.user_id,
                     request.message,
@@ -532,8 +535,11 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
 
         # ── Cache the response for fresh-session queries ───────────────────────
         # Only cache HIGH/MEDIUM confidence answers to avoid caching error states.
+        # Also skip caching if any FIRE/retirement tool was used — those responses
+        # reflect mutable DB state (goals, live portfolio, FRED data) that changes
+        # as soon as the user sets or updates their retirement goal.
         confidence = final_state.get("confidence", "MEDIUM")
-        if is_fresh_session and confidence != "LOW":
+        if is_fresh_session and confidence != "LOW" and response_is_cacheable(tool_calls):
             await set_cached_response(
                 request.user_id,
                 request.message,
