@@ -22,6 +22,10 @@ by integrating with [Ghostfolio](https://ghostfol.io), the open-source wealth ma
 
 ---
 
+## Fortio Agent exists under apps/agent folder
+
+---
+
 ## Quick Start (30 minutes to first API call)
 
 ### 1. Clone and set up Python environment
