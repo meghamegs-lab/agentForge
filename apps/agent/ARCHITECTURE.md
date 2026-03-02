@@ -90,9 +90,9 @@ analysis is inherently **multi-step and stateful**:
 
 ### Tool Design
 
-11 tools split into two tiers:
+16 tools split into three tiers:
 
-**Core tools** (single Ghostfolio API call):
+**Core tools** (5 — single Ghostfolio API call):
 
 | Tool                      | API endpoint                        | What it returns                                      |
 | ------------------------- | ----------------------------------- | ---------------------------------------------------- |
@@ -102,13 +102,75 @@ analysis is inherently **multi-step and stateful**:
 | `analyze_diversification` | holdings (computed)                 | Sector weights, HHI-style score, concentration flags |
 | `get_market_data`         | Yahoo Finance / yfinance            | Live price, 52-week range, batch quotes              |
 
-**Advanced tools** (multi-step computation inside the tool):
+**Advanced tools** (6 — multi-step computation inside the tool):
 
 `get_fee_drag_analysis`, `get_portfolio_health_scorecard`, `get_rebalancing_plan`,
 `get_market_context_overlay`, `get_transaction_pattern_intelligence`, `get_proactive_risk_monitor`
 
+**FIRE Goal Tracker tools** (5 — feature-flagged, opt-in via `FIRE_TRACKER_ENABLED=true`):
+
+| Tool                              | Data Sources                   | What it returns                             |
+| --------------------------------- | ------------------------------ | ------------------------------------------- |
+| `set_retirement_goal`             | Postgres (`retirement_goals`)  | FIRE number (4% rule), years to retire      |
+| `get_retirement_goal`             | Postgres                       | Saved goal parameters                       |
+| `get_fire_progress`               | Postgres + Ghostfolio holdings | % toward FIRE number, dollar shortfall      |
+| `calculate_retirement_projection` | Postgres + FRED (CPI + DGS10)  | Projected retirement date, real return      |
+| `get_macro_data`                  | FRED API                       | Current CPI inflation, 10-yr Treasury yield |
+
 All tools are `async def`, return structured `dict` (never raise), and use
 `valueInBaseCurrency` (Ghostfolio v2 field) for position values.
+
+---
+
+## 2b. FIRE Goal Tracker — Stateful Extension
+
+The FIRE tracker adds two new infrastructure layers when `FIRE_TRACKER_ENABLED=true`:
+
+### Stateful data — `retirement_goals` Postgres table
+
+| Column                     | Type        | Description                   |
+| -------------------------- | ----------- | ----------------------------- |
+| `user_id`                  | TEXT UNIQUE | Ties goal to Ghostfolio user  |
+| `current_age`              | INTEGER     | User's age today              |
+| `target_retirement_age`    | INTEGER     | Desired retirement age        |
+| `target_annual_spending`   | NUMERIC     | $/year to spend in retirement |
+| `safe_withdrawal_rate`     | NUMERIC     | Default 4% (0.04)             |
+| `monthly_contribution`     | NUMERIC     | Monthly savings amount        |
+| `expected_annual_return`   | NUMERIC     | Default 7%                    |
+| `social_security_estimate` | NUMERIC     | Expected SS income            |
+
+Table is created at FastAPI startup via `create_table_if_not_exists()` in `lifespan`. When
+`FIRE_TRACKER_ENABLED=false`, the table is never created and no DB calls are made.
+
+### FRED API client — `agent/clients/fred.py`
+
+Fetches two FRED series:
+
+| Series     | Name                  | Used for                                             |
+| ---------- | --------------------- | ---------------------------------------------------- |
+| `CPIAUCSL` | Consumer Price Index  | Year-over-year inflation for real-return calculation |
+| `DGS10`    | 10-Year Treasury Rate | Risk-free rate benchmark                             |
+
+Real return formula: `(1 + nominal_return) / (1 + inflation) − 1`
+
+The client uses `tenacity` for exponential-back-off retry (3 attempts, 1–4 s window). If FRED
+is unavailable, tools fall back to default macro values and append `macro_data_status: "default"`
+to the tool output — the agent never errors out.
+
+### New file layout (FIRE tracker only)
+
+| File                        | Purpose                                        |
+| --------------------------- | ---------------------------------------------- |
+| `agent/clients/fred.py`     | Async FRED API client with tenacity retry      |
+| `agent/db/__init__.py`      | DB package init                                |
+| `agent/db/retirement.py`    | Postgres CRUD via psycopg2 + asyncio.to_thread |
+| `agent/tools/retirement.py` | 5 LangChain `@tool` functions                  |
+
+### Observability
+
+- DB operations emit structlog events: `retirement_goal_saved`, `retirement_goal_deleted`
+- Verification pipeline adds `FIRE_PROJECTION_SPECULATIVE` flag (LOW severity) on every projection response
+- All tool calls traced in LangSmith under the `fortio-agent` project
 
 ---
 
@@ -153,23 +215,26 @@ response text + tool_results
 
 ### Test Suite Structure
 
-| Suite                     | File                                     | Tests  | What it covers                                         |
-| ------------------------- | ---------------------------------------- | ------ | ------------------------------------------------------ |
-| Unit — API schemas        | `tests/unit/api/`                        | 30     | Pydantic schema validation                             |
-| Unit — Clients            | `tests/unit/clients/`                    | 54     | HTTP mocking, auth, retry (Ghostfolio + market)        |
-| Unit — Graph routing      | `tests/unit/graph/`                      | 53     | Routing logic, context extraction, history redaction   |
-| Unit — Tools              | `tests/unit/tools/`                      | 31     | Tool output shapes, edge cases                         |
-| Unit — Verification       | `tests/unit/verification/`               | 43     | All 5 pipeline stages                                  |
-| Eval — Correctness        | `tests/evals/test_correctness.py`        | 11     | Math accuracy (%, sorts, sums, sector rollup)          |
-| Eval — Tool selection     | `tests/evals/test_tool_selection.py`     | 28     | Docstring trigger keywords, domain boundary            |
-| Eval — LLM tool selection | `tests/evals/test_llm_tool_selection.py` | 16     | LLM-driven tool routing, keyword coverage              |
-| Eval — Tool execution     | `tests/evals/test_tool_execution.py`     | 12     | Advanced tool happy path + error cases                 |
-| Eval — Multi-step         | `tests/evals/test_multi_step.py`         | 19     | Cross-tool data consistency                            |
-| Eval — Edge cases         | `tests/evals/test_edge_cases.py`         | 28     | Unicode, empty portfolio, bad input                    |
-| Eval — **Adversarial**    | `tests/evals/test_adversarial.py`        | **29** | Prompt injection, jailbreaks, fabricated numbers       |
-| Eval — Safety             | `tests/evals/test_safety.py`             | 19     | Disclaimer, hallucination guard, confidence scoring    |
-| Adversarial (standalone)  | `tests/adversarial/test_adversarial.py`  | —      | Safety / off-topic deflection (separate suite)         |
-| LangSmith Experiments     | `tests/evals/ls_evals.py`                | 23     | Correctness, safety, latency, consistency scored evals |
+| Suite                     | File                                        | Tests  | What it covers                                            |
+| ------------------------- | ------------------------------------------- | ------ | --------------------------------------------------------- |
+| Unit — API schemas        | `tests/unit/api/`                           | 30     | Pydantic schema validation                                |
+| Unit — Clients            | `tests/unit/clients/`                       | 54     | HTTP mocking, auth, retry (Ghostfolio + market)           |
+| Unit — FRED client        | `tests/unit/clients/test_fred_client.py`    | 20     | FRED HTTP mocking, retry, fallback defaults               |
+| Unit — Graph routing      | `tests/unit/graph/`                         | 53     | Routing logic, context extraction, history redaction      |
+| Unit — Tools              | `tests/unit/tools/`                         | 31     | Tool output shapes, edge cases                            |
+| Unit — Retirement tools   | `tests/unit/tools/test_retirement_tools.py` | 37     | FIRE tool outputs, Postgres CRUD, FRED integration        |
+| Unit — Verification       | `tests/unit/verification/`                  | 43     | All 5 pipeline stages                                     |
+| Eval — Correctness        | `tests/evals/test_correctness.py`           | 11     | Math accuracy (%, sorts, sums, sector rollup)             |
+| Eval — Tool selection     | `tests/evals/test_tool_selection.py`        | 28     | Docstring trigger keywords, domain boundary               |
+| Eval — LLM tool selection | `tests/evals/test_llm_tool_selection.py`    | 16     | LLM-driven tool routing, keyword coverage                 |
+| Eval — Tool execution     | `tests/evals/test_tool_execution.py`        | 12     | Advanced tool happy path + error cases                    |
+| Eval — Multi-step         | `tests/evals/test_multi_step.py`            | 19     | Cross-tool data consistency                               |
+| Eval — Edge cases         | `tests/evals/test_edge_cases.py`            | 28     | Unicode, empty portfolio, bad input                       |
+| Eval — **Adversarial**    | `tests/evals/test_adversarial.py`           | **29** | Prompt injection, jailbreaks, fabricated numbers          |
+| Eval — Safety             | `tests/evals/test_safety.py`                | 19     | Disclaimer, hallucination guard, confidence scoring       |
+| Eval — Retirement/FIRE    | `tests/evals/test_retirement_eval.py`       | 35+    | 10 categories: projection math, multi-turn, FRED fallback |
+| Adversarial (standalone)  | `tests/adversarial/test_adversarial.py`     | —      | Safety / off-topic deflection (separate suite)            |
+| LangSmith Experiments     | `tests/evals/ls_evals.py`                   | 23     | Correctness, safety, latency, consistency scored evals    |
 
 ### Running the Eval Suite
 
@@ -196,11 +261,12 @@ python tests/evals/ls_evals.py --prefix feat/my-branch
 ### Results (as of Mar 1, 2026)
 
 ```
-277 passed in 15.28s     (unit + eval combined, excluding LLM-live tests)
+277 passed in 15.28s     (unit + eval combined, core suite — excluding LLM-live tests)
+369+ passed              (with FIRE tracker tests: +20 FRED client, +37 retirement tools, +35 retirement evals)
 Coverage: 83.20% (total)   ← well above 40% required threshold
 ```
 
-**All 277 tests pass. Zero failures.**
+**All tests pass. Zero failures.**
 
 ### Notable Findings During Development
 
