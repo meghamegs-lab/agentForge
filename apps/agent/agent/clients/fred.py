@@ -68,8 +68,11 @@ class FredClient:
         inflation = await client.get_current_inflation_rate()
     """
 
-    def __init__(self, api_key: str = "") -> None:
-        self._api_key = api_key or settings.fred_api_key
+    def __init__(self, api_key: str | None = None) -> None:
+        # Use None as sentinel so FredClient(api_key="") is respected as "no key"
+        # rather than falling back to settings. This allows tests to exercise the
+        # missing-key error path even when FRED_API_KEY is configured in .env.
+        self._api_key = api_key if api_key is not None else settings.fred_api_key
 
     # ── Internal: raw series fetch (with tenacity retry) ──────────────────────
 
