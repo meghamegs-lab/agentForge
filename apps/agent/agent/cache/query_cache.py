@@ -12,6 +12,14 @@ depend on conversation history and MUST NOT be served from cache.
 Cache misses and Redis errors are both handled silently; the agent falls
 through to a fresh LLM call in either case.
 
+Uncacheable tools
+-----------------
+Responses that involved any tool in _UNCACHEABLE_TOOLS are never written to
+cache.  These tools return user-specific, mutable state (DB-backed retirement
+goals, live portfolio values, live FRED macro data) that changes as soon as
+the user sets or updates their FIRE goal — caching them would serve stale
+'not_found' or outdated projection data on subsequent queries.
+
 Configuration
 -------------
     SEMANTIC_CACHE_ENABLED=true          (default)
@@ -31,6 +39,51 @@ import structlog
 from agent.config import settings
 
 log = structlog.get_logger()
+
+# ── Uncacheable tools ──────────────────────────────────────────────────────────
+# Responses that involved any of these tools must NEVER be written to cache.
+# These tools return mutable, user-specific state:
+#   - get_retirement_goal / set_retirement_goal: DB-backed; changes when the
+#     user creates or updates their FIRE goal.
+#   - get_fire_progress: combines live portfolio value + DB goal → changes with
+#     every portfolio update or goal change.
+#   - calculate_retirement_projection: same as above + live FRED macro data.
+#   - get_macro_data: live CPI + 10Y Treasury from FRED — always real-time.
+#
+# Without this exclusion, a 'not_found' response from get_retirement_goal
+# would be cached and served even after the user successfully sets a goal.
+_UNCACHEABLE_TOOLS: frozenset[str] = frozenset(
+    {
+        "get_retirement_goal",
+        "set_retirement_goal",
+        "get_fire_progress",
+        "calculate_retirement_projection",
+        "get_macro_data",
+    }
+)
+
+
+def response_is_cacheable(tool_calls: list[dict]) -> bool:
+    """
+    Return False if any tool call in this response used an uncacheable tool.
+
+    Args:
+        tool_calls: List of tool call dicts, each with at minimum a 'tool_name' key.
+                    Accepts both the streaming format (list[dict]) and the non-streaming
+                    ToolCallInfo objects — checks for both .tool_name attr and dict key.
+
+    Returns:
+        True  → safe to cache (no uncacheable tools were used)
+        False → must NOT cache (at least one uncacheable tool was used)
+    """
+    for tc in tool_calls:
+        # Support both dict (streaming path) and object (chat path)
+        name = tc.get("tool_name") if isinstance(tc, dict) else getattr(tc, "tool_name", "")
+        if name in _UNCACHEABLE_TOOLS:
+            log.info("cache_skipped_uncacheable_tool", tool=name)
+            return False
+    return True
+
 
 # Module-level Redis client — initialised lazily on first use.
 _redis: aioredis.Redis | None = None

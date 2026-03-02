@@ -18,6 +18,7 @@ Checkpointing:
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import structlog
@@ -216,9 +217,18 @@ _FINANCE_KEYWORDS: frozenset[str] = frozenset(
 )
 
 
+# Pattern: 2–5 uppercase letters as a whole word — very likely a stock/ETF ticker
+# (e.g. QQQ, AAPL, SPY).  Requires ≥2 chars so common single-letter words like
+# "I" or "A" don't falsely trigger tool forcing on non-finance queries.
+# Checked against the original message (not lowercased) so tickers like "QQQ"
+# are detected even when no keyword list entry matches.
+_TICKER_PATTERN = re.compile(r"\b[A-Z]{2,5}\b")
+
+
 def _is_finance_query(messages: list) -> bool:
     """
-    Return True if the most recent HumanMessage contains finance-domain keywords.
+    Return True if the most recent HumanMessage contains finance-domain keywords
+    OR an uppercase ticker-like token (e.g. QQQ, AAPL, SPY).
 
     Used to decide whether to force tool use (_llm_force_tools) or allow a
     free-form response (_llm) on the first reasoning step of a turn.
@@ -229,11 +239,20 @@ def _is_finance_query(messages: list) -> bool:
     Deliberately broad: a false-positive (forcing a tool on a borderline
     finance query) is harmless; a false-negative (missing a real finance
     query) risks the LLM answering from training data → hallucination.
+
+    Two-stage check:
+      1. Keyword list — catches "price", "portfolio", "ETF", etc.
+      2. Ticker pattern — catches bare uppercase symbols like "QQQ" or "AAPL"
+         that don't appear in the keyword list.
     """
     for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
-            text = str(msg.content).lower()
-            return any(kw in text for kw in _FINANCE_KEYWORDS)
+            original = str(msg.content)  # keep original case for ticker check
+            text = original.lower()
+            if any(kw in text for kw in _FINANCE_KEYWORDS):
+                return True
+            # Uppercase token ≥ 2 chars is almost certainly a ticker symbol
+            return bool(_TICKER_PATTERN.search(original))
     return False
 
 

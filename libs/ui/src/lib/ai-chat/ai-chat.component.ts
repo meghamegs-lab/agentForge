@@ -265,6 +265,49 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
       ]
     },
     {
+      emoji: '🔥',
+      level: 'FIRE Goal Tracker',
+      description: 'Retirement Planning (set goal → track → project)',
+      groups: [
+        {
+          tool: 'set_retirement_goal',
+          prompts: [
+            {
+              text: "I'm 35, want to retire at 60, spending $80k/year, saving $2,000/month",
+              note: 'Creates your FIRE goal in the database'
+            }
+          ]
+        },
+        {
+          tool: 'get_retirement_goal',
+          prompts: [{ text: 'What is my retirement goal?' }]
+        },
+        {
+          tool: 'get_fire_progress',
+          prompts: [{ text: 'Am I on track to retire?' }]
+        },
+        {
+          tool: 'calculate_retirement_projection',
+          prompts: [
+            { text: 'When can I retire?' },
+            {
+              text: 'What if I save $3,500/month instead?',
+              note: 'What-if scenario using monthly_contribution_override'
+            }
+          ]
+        },
+        {
+          tool: 'get_macro_data',
+          prompts: [
+            {
+              text: 'What is the current inflation rate and how does it affect my plan?',
+              note: 'Fetches live CPI + 10Y Treasury from FRED'
+            }
+          ]
+        }
+      ]
+    },
+    {
       emoji: '⚠️',
       level: 'Edge Cases',
       description: 'Test the Verification Layer',
@@ -314,7 +357,14 @@ export class GfAiChatComponent implements OnInit, OnDestroy {
         'How do I rebalance my portfolio? Give me specific dollar amounts',
         'How would my portfolio hold up in a recession?',
         'What patterns do you see in my trading history?',
-        'Do I have any urgent risks I should know about right now?'
+        'Do I have any urgent risks I should know about right now?',
+        // ── FIRE Goal Tracker ─────────────────────────────────────────────────
+        "I'm 35, want to retire at 60, spending $80k/year, saving $2,000/month",
+        'What is my retirement goal?',
+        'Am I on track to retire?',
+        'When can I retire?',
+        'What if I save $3,500/month instead?',
+        'What is the current inflation rate and how does it affect my plan?'
       ]
     });
   }

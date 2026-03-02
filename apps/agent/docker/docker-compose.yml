@@ -115,6 +115,9 @@ services:
       LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-fortio-agent}
       # CORS — allowed browser origins (comma-separated); override in .env if needed
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200,http://localhost:3333,https://ghostfolio-production-453e.up.railway.app}
+      # FIRE Goal Tracker (optional bounty add-on)
+      FIRE_TRACKER_ENABLED: ${FIRE_TRACKER_ENABLED:-false}
+      FRED_API_KEY: ${FRED_API_KEY:-}
       # App
       ENVIRONMENT: ${ENVIRONMENT:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

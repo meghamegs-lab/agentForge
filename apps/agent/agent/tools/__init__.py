@@ -27,6 +27,30 @@ ALL_TOOLS = [
     get_proactive_risk_monitor,
 ]
 
+# ── FIRE Goal Tracker (optional add-on) ───────────────────────────────────────
+# Only registered when FIRE_TRACKER_ENABLED=true in .env.
+# When disabled: zero tools added, zero DB connections opened, agent is unchanged.
+from agent.config import settings  # noqa: E402 (import after list construction is intentional)
+
+if settings.fire_tracker_enabled:
+    from agent.tools.retirement import (
+        calculate_retirement_projection,
+        get_fire_progress,
+        get_macro_data,
+        get_retirement_goal,
+        set_retirement_goal,
+    )
+
+    ALL_TOOLS.extend(
+        [
+            get_retirement_goal,
+            set_retirement_goal,
+            get_fire_progress,
+            calculate_retirement_projection,
+            get_macro_data,
+        ]
+    )
+
 __all__ = [
     "get_portfolio_summary",
     "get_performance",
