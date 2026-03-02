@@ -203,18 +203,19 @@ AND confidence != LOW?
 
 ## All Flag Types — Quick Reference
 
-| Flag                      | Stage | Severity   | Trigger                                                          |
-| ------------------------- | ----- | ---------- | ---------------------------------------------------------------- |
-| `DISCLAIMER_ADDED`        | 1     | INFO       | Response contains investment advice keywords                     |
-| `POTENTIAL_HALLUCINATION` | 2     | **MEDIUM** | No tools called, but response has financial numbers              |
-| `POTENTIAL_HALLUCINATION` | 2     | **HIGH**   | All tools failed, but response still cites financial numbers     |
-| `UNSUPPORTED_CLAIM`       | 2     | **MEDIUM** | Financial numbers in response can't be traced to any tool result |
-| `MISSING_TIMESTAMP`       | 3     | LOW        | A tool result has no `data_timestamp` field                      |
-| `STALE_DATA`              | 3     | **MEDIUM** | Market data > 15 min old, or portfolio data > 60 min old         |
-| `INVALID_TIMESTAMP`       | 3     | LOW        | `data_timestamp` exists but can't be parsed                      |
-| `CONCENTRATION_RISK`      | 4     | **MEDIUM** | Any holding ≥ 20% of portfolio                                   |
-| `LOW_CONFIDENCE`          | 5     | INFO       | No tool data, predictions, or speculative language detected      |
-| `LOW_CONFIDENCE`          | Post  | INFO       | Disclaimer was added but confidence wasn't already LOW           |
+| Flag                          | Stage | Severity   | Trigger                                                          |
+| ----------------------------- | ----- | ---------- | ---------------------------------------------------------------- |
+| `DISCLAIMER_ADDED`            | 1     | INFO       | Response contains investment advice keywords                     |
+| `POTENTIAL_HALLUCINATION`     | 2     | **MEDIUM** | No tools called, but response has financial numbers              |
+| `POTENTIAL_HALLUCINATION`     | 2     | **HIGH**   | All tools failed, but response still cites financial numbers     |
+| `UNSUPPORTED_CLAIM`           | 2     | **MEDIUM** | Financial numbers in response can't be traced to any tool result |
+| `MISSING_TIMESTAMP`           | 3     | LOW        | A tool result has no `data_timestamp` field                      |
+| `STALE_DATA`                  | 3     | **MEDIUM** | Market data > 15 min old, or portfolio data > 60 min old         |
+| `INVALID_TIMESTAMP`           | 3     | LOW        | `data_timestamp` exists but can't be parsed                      |
+| `CONCENTRATION_RISK`          | 4     | **MEDIUM** | Any holding ≥ 20% of portfolio                                   |
+| `LOW_CONFIDENCE`              | 5     | INFO       | No tool data, predictions, or speculative language detected      |
+| `LOW_CONFIDENCE`              | Post  | INFO       | Disclaimer was added but confidence wasn't already LOW           |
+| `FIRE_PROJECTION_SPECULATIVE` | Post  | LOW        | Response contains a FIRE/retirement projection (future estimate) |
 
 ---
 
@@ -245,6 +246,25 @@ HIGH    → Potential hallucination; triggers escalation path in graph
 > `HIGH` flag was raised (currently only `POTENTIAL_HALLUCINATION` when all tools
 > failed). The graph's `should_escalate()` router uses this combined with
 > `should_escalate` state field to decide whether to route to the escalation node.
+
+---
+
+## FIRE Projection Flag
+
+When `FIRE_TRACKER_ENABLED=true` and `calculate_retirement_projection` runs, the pipeline
+always appends a `FIRE_PROJECTION_SPECULATIVE` flag (LOW severity) regardless of data freshness
+or tool success, because retirement timelines are inherently forward-looking estimates, not facts.
+
+```
+⚑ FIRE_PROJECTION_SPECULATIVE
+  severity: LOW
+  "This retirement projection is a forward-looking estimate based on assumed
+   returns and live inflation data. Actual outcomes will vary."
+```
+
+This flag is **additive** — it does not override or replace other flags. Confidence is not
+downgraded solely because of this flag (LOW severity has no effect on the confidence scorer).
+It is surfaced in the API response and shown as a `⚠️ Flags detected` note in the chat UI.
 
 ---
 

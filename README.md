@@ -39,15 +39,15 @@
 
 ### What Fortio Adds
 
-| Layer             | Details                                                                                                                                                                                                            |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Agent**         | LangGraph `StateGraph` + Claude Sonnet (primary) + GPT-4o (fallback)                                                                                                                                               |
-| **Tools**         | 11 domain tools — 5 core (portfolio, performance, transactions, diversification, market) + 6 advanced (fee drag, health scorecard, rebalancing plan, market context, transaction patterns, proactive risk monitor) |
-| **Verification**  | 5-stage pipeline: disclaimer injection · hallucination guard · data freshness · concentration risk · confidence scoring                                                                                            |
-| **API**           | FastAPI REST endpoint (`POST /api/chat`) with multi-turn conversation history via Postgres checkpointing                                                                                                           |
-| **UI**            | Embedded Angular chat widget in Ghostfolio (powered by the FastAPI REST endpoint)                                                                                                                                  |
-| **Observability** | LangSmith tracing                                                                                                                                                                                                  |
-| **Deployment**    | Railway (CI/CD via GitHub Actions)                                                                                                                                                                                 |
+| Layer             | Details                                                                                                                                                                                                                                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Agent**         | LangGraph `StateGraph` + Claude Sonnet (primary) + GPT-4o (fallback)                                                                                                                                                                                                                              |
+| **Tools**         | 16 domain tools — 5 core (portfolio, performance, transactions, diversification, market) + 6 advanced (fee drag, health scorecard, rebalancing plan, market context, transaction patterns, proactive risk monitor) + 5 FIRE Goal Tracker (retirement planning + FRED macro data, feature-flagged) |
+| **Verification**  | 5-stage pipeline: disclaimer injection · hallucination guard · data freshness · concentration risk · confidence scoring                                                                                                                                                                           |
+| **API**           | FastAPI REST endpoint (`POST /api/chat`) with multi-turn conversation history via Postgres checkpointing                                                                                                                                                                                          |
+| **UI**            | Embedded Angular chat widget in Ghostfolio (powered by the FastAPI REST endpoint)                                                                                                                                                                                                                 |
+| **Observability** | LangSmith tracing                                                                                                                                                                                                                                                                                 |
+| **Deployment**    | Railway (CI/CD via GitHub Actions)                                                                                                                                                                                                                                                                |
 
 ### Agent Architecture
 
@@ -81,7 +81,7 @@ After `pip install -e .` the `fortio` CLI is available:
 | `fortio chat`              | Interactive multi-turn REPL with `/help`, `/tools`, `/clear`           |
 | `fortio serve`             | Start the FastAPI server on port 8001                                  |
 | `fortio serve --reload`    | Dev mode with hot-reload                                               |
-| `fortio mcp`               | Start the MCP server (exposes all 11 tools to Claude Desktop / Cursor) |
+| `fortio mcp`               | Start the MCP server (exposes all 16 tools to Claude Desktop / Cursor) |
 | `fortio demo`              | Run all 11 tools in sequence — one-command proof of functionality      |
 | `fortio version`           | Show active model, environment, and checkpoint config                  |
 
@@ -95,7 +95,7 @@ fortio serve --reload
 
 ### MCP — Claude Desktop & Cursor Integration
 
-Fortio exposes all 11 portfolio tools as an MCP server, letting Claude Desktop and Cursor
+Fortio exposes all 16 portfolio tools as an MCP server, letting Claude Desktop and Cursor
 query your Ghostfolio data directly in their chat interfaces — no browser, no API keys in a chat box.
 
 **Start the MCP server:**
@@ -131,9 +131,33 @@ The MCP server also exposes:
 - **3 resources** — `portfolio://summary`, `portfolio://performance`, `portfolio://health`
 - **1 prompt template** — `portfolio-analysis` with focus options: `risk` · `performance` · `fees` · `all`
 
+### FIRE Goal Tracker (opt-in)
+
+Fortio includes a **FIRE (Financial Independence, Retire Early) Goal Tracker** — set a retirement
+goal once, then ask natural-language questions about it across conversation turns:
+
+| Question                                        | Tools invoked                                 |
+| ----------------------------------------------- | --------------------------------------------- |
+| "Retire at 50, spend $80K/year"                 | `set_retirement_goal`                         |
+| "What's my FIRE number?"                        | `get_retirement_goal`                         |
+| "Am I on track to retire?"                      | `get_fire_progress` + `get_portfolio_summary` |
+| "When can I retire at my current savings rate?" | `calculate_retirement_projection` + FRED      |
+| "What's today's inflation rate?"                | `get_macro_data`                              |
+
+Retirement projections fetch live **CPI inflation** and **10-year Treasury yield** from the
+[FRED API](https://fred.stlouisfed.org) (Federal Reserve Bank of St. Louis — free, no credit card).
+Goals persist in Postgres across sessions. Enable with two env vars:
+
+```bash
+FIRE_TRACKER_ENABLED=true
+FRED_API_KEY=your_key_here   # free at fred.stlouisfed.org
+```
+
+See [`apps/agent/BOUNTY.md`](./apps/agent/BOUNTY.md) for the full feature write-up.
+
 ### Eval Suite
 
-The agent ships with **60+ evaluation tests** (all mocked — zero real API calls) plus a LangSmith experiment suite.
+The agent ships with **370+ evaluation tests** (all mocked — zero real API calls) plus a LangSmith experiment suite.
 
 | Eval file                                                                                       | What it tests                                                                   | Tests |
 | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ----- |

@@ -14,10 +14,10 @@ by integrating with [Ghostfolio](https://ghostfol.io), the open-source wealth ma
 ## Stack
 
 - **Agent:** LangGraph (state machine) + Claude Haiku (primary LLM) + GPT-4o-mini (fallback)
-- **Tools:** 11 domain tools — 5 core (Ghostfolio REST API) + 6 advanced multi-step
-- **Verification:** 5-stage pipeline (disclaimer, hallucination guard, freshness, concentration, confidence)
+- **Tools:** 16 domain tools — 5 core (Ghostfolio REST API) + 6 advanced multi-step + 5 FIRE Goal Tracker (opt-in, feature-flagged)
+- **Verification:** 5-stage pipeline (disclaimer, hallucination guard, freshness, concentration, confidence) + `FIRE_PROJECTION_SPECULATIVE` flag
 - **Interfaces:** FastAPI REST API · Typer CLI (`fortio`) · MCP server (`fortio mcp`)
-- **Observability:** LangSmith tracing + structured eval suite (280+ tests)
+- **Observability:** LangSmith tracing + structured eval suite (370+ tests)
 - **Deployment:** Railway (CI/CD via GitHub Actions)
 
 ---
@@ -248,7 +248,7 @@ pasted into a chat box.
 
 | Type          | Count | Details                                                                |
 | ------------- | ----- | ---------------------------------------------------------------------- |
-| **Tools**     | 11    | All portfolio, performance, diversification, and market data tools     |
+| **Tools**     | 16    | All portfolio, performance, diversification, market, and FIRE tools    |
 | **Resources** | 3     | `portfolio://summary`, `portfolio://performance`, `portfolio://health` |
 | **Prompts**   | 1     | `portfolio-analysis` (pre-loads live data; focus: risk/perf/fees/all)  |
 
@@ -314,7 +314,7 @@ portfolio://health — health score (0-100), letter grade, action items
 
 ## Eval Suite
 
-The agent ships with **280+ evaluation tests** across 8 files (zero real network calls — all mocked
+The agent ships with **370+ evaluation tests** across 9 files (zero real network calls — all mocked
 with `respx`), plus a LangSmith experiment suite.
 
 ### Eval files
@@ -329,6 +329,7 @@ with `respx`), plus a LangSmith experiment suite.
 | [`tests/evals/test_edge_cases.py`](./tests/evals/test_edge_cases.py)                 | Dict/list format switching, zero-value holdings, unicode, large portfolios, invalid inputs | 28    |
 | [`tests/evals/test_adversarial.py`](./tests/evals/test_adversarial.py)               | Prompt injection, jailbreaks, off-topic deflection, fabricated number detection            | 29    |
 | [`tests/evals/test_safety.py`](./tests/evals/test_safety.py)                         | Verification pipeline stages: disclaimer, hallucination guard, confidence scoring          | 19    |
+| [`tests/evals/test_retirement_eval.py`](./tests/evals/test_retirement_eval.py)       | FIRE Goal Tracker: projection math, multi-turn, FRED fallback (10 categories)              | 35+   |
 | [`tests/evals/ls_evals.py`](./tests/evals/ls_evals.py)                               | LangSmith tracked experiments: correctness, safety, latency, consistency, tool-keywords    | 23    |
 
 ### Running the eval suite
@@ -393,6 +394,56 @@ python tests/evals/ls_evals.py --prefix feat/my-branch # tag experiment run
 Evals run automatically on every PR and push to `main` as part of the `test-agent` CI job.
 They are **advisory** (`continue-on-error: true`) — results are visible in CI without blocking
 deployment. Unit tests are the hard gate.
+
+---
+
+## FIRE Goal Tracker
+
+Fortio ships an opt-in **FIRE (Financial Independence, Retire Early) planning** module backed
+by live Federal Reserve data from the [FRED API](https://fred.stlouisfed.org).
+
+### Enable it
+
+```bash
+# In .env
+FIRE_TRACKER_ENABLED=true
+FRED_API_KEY=your_key_here   # free — see SETUP.md Step 2b
+```
+
+### What users can ask
+
+| Question                                        | Tools invoked                                 |
+| ----------------------------------------------- | --------------------------------------------- |
+| "Retire at 50, spend $80K/year"                 | `set_retirement_goal`                         |
+| "What's my FIRE number?"                        | `get_retirement_goal`                         |
+| "Am I on track to retire?"                      | `get_fire_progress` + `get_portfolio_summary` |
+| "When can I retire at my current savings rate?" | `calculate_retirement_projection` + FRED      |
+| "What if I save $500 more per month?"           | `calculate_retirement_projection` (override)  |
+| "What's the current 10-year Treasury yield?"    | `get_macro_data`                              |
+
+### How it works
+
+Retirement projections fetch **live CPI inflation** and **10-year Treasury yields** from FRED:
+
+```
+Real return = (1 + nominal_return) / (1 + CPI_inflation) − 1
+```
+
+Goals persist in the `retirement_goals` Postgres table. CRUD API routes:
+
+| Operation       | Route                                    |
+| --------------- | ---------------------------------------- |
+| Create / Update | `POST /api/goals/retirement`             |
+| Read            | `GET /api/goals/retirement/{user_id}`    |
+| Delete          | `DELETE /api/goals/retirement/{user_id}` |
+
+Every projection response gets a `FIRE_PROJECTION_SPECULATIVE` flag (LOW severity) from the
+verification pipeline — surfaced as a `⚠️ Flags detected` note in the chat UI.
+
+> **Zero impact when disabled:** `FIRE_TRACKER_ENABLED=false` (default) — no tools registered,
+> no DB tables created, no FRED calls made. Existing deployments are completely unaffected.
+
+See [`BOUNTY.md`](./BOUNTY.md) for the full feature write-up.
 
 ---
 
@@ -527,11 +578,24 @@ tool results in the same prompt.
 
 ## Open Source
 
-This agent is published as `fortio-agent` on PyPI:
+This agent is published as `fortio-agent` on PyPI. The package metadata is defined in `pyproject.toml`.
+
+### Install from PyPI
 
 \`\`\`bash
 pip install fortio-agent
 \`\`\`
 
-- PyPI: [pypi.org/project/fortio-agent](https://pypi.org/project/fortio-agent/)
-- Source: [github.com/meghamegs-lab/agentForge](https://github.com/meghamegs-lab/agentForge)
+After installation, the `fortio` CLI command is available:
+
+\`\`\`bash
+fortio --help
+fortio ask "What does my portfolio look like?"
+fortio serve
+\`\`\`
+
+### Links
+
+- **PyPI Package:** [pypi.org/project/fortio-agent](https://pypi.org/project/fortio-agent/)
+- **Source Code:** [github.com/meghamegs-lab/agentForge](https://github.com/meghamegs-lab/agentForge)
+- **Package Config:** `apps/agent/pyproject.toml` (metadata, dependencies, entry points)

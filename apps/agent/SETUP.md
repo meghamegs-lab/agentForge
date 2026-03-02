@@ -49,7 +49,35 @@ LANGCHAIN_PROJECT=fortio-agent
 
 # ── Optional — OpenAI fallback ──────────────────────────────────────────────
 OPENAI_API_KEY=sk-...
+
+# ── Optional — FIRE Goal Tracker (retire-early planning) ─────────────────────
+FIRE_TRACKER_ENABLED=false            # set to true to enable FIRE tools
+FRED_API_KEY=                         # free key — see Step 2b below
 ```
+
+---
+
+## Step 2b — Get a FRED API key (optional — for FIRE Goal Tracker)
+
+If you plan to use the **FIRE Goal Tracker** (`FIRE_TRACKER_ENABLED=true`), you need a free
+FRED API key from the Federal Reserve Bank of St. Louis:
+
+1. Go to **[fred.stlouisfed.org](https://fred.stlouisfed.org)**
+2. Click **My Account** → **Create an Account** — no credit card required
+3. Verify your email, then log in
+4. Click your name (top-right) → **API Keys** → **Request API Key**
+5. Enter a short description (e.g. `"Fortio FIRE tracker"`) and agree to terms
+6. Copy the key that appears into `.env`:
+
+```bash
+FRED_API_KEY=your_32_character_key_here
+FIRE_TRACKER_ENABLED=true
+```
+
+> **Rate limit:** 120 req/min (free tier) — Fortio uses at most 2 FRED calls per question.  
+> **No expiry:** Keys are permanent until manually revoked.
+
+Skip this step if you only want the core portfolio tools (FIRE tracker is off by default).
 
 ---
 
@@ -167,6 +195,14 @@ pytest tests/adversarial/ -v           # safety / jailbreak / off-topic
 >
 > - `tests/evals/test_adversarial.py` — adversarial tests that run as part of the eval suite
 > - `tests/adversarial/test_adversarial.py` — standalone adversarial/safety suite (run separately)
+
+### FIRE Goal Tracker tests (requires `FIRE_TRACKER_ENABLED=true`)
+
+```bash
+pytest tests/unit/clients/test_fred_client.py -v       # 20 FRED client tests
+pytest tests/unit/tools/test_retirement_tools.py -v    # 37 retirement tool unit tests
+pytest tests/evals/test_retirement_eval.py -v           # 35+ FIRE eval tests (10 categories)
+```
 
 ### Coverage report
 
@@ -427,6 +463,54 @@ source .venv/bin/activate
 pip install -e .
 PYTHONPATH=. pytest tests/unit/ -v
 ```
+
+---
+
+## FIRE Goal Tracker (Optional Feature)
+
+The FIRE (Financial Independence, Retire Early) Goal Tracker is an opt-in module that adds
+retirement planning to Fortio using live Federal Reserve macro data (FRED API).
+
+### Enable it
+
+```bash
+# In .env (see Step 2b for how to get a FRED API key)
+FIRE_TRACKER_ENABLED=true
+FRED_API_KEY=your_key_here
+```
+
+When enabled, 5 additional tools are registered and 4 new API routes become active:
+
+### New tools
+
+| Tool                              | What it does                                                    |
+| --------------------------------- | --------------------------------------------------------------- |
+| `set_retirement_goal`             | Save/update your FIRE goal (age, target spending, savings rate) |
+| `get_retirement_goal`             | Retrieve your saved goal and computed FIRE number               |
+| `get_fire_progress`               | Current % progress toward your FIRE number                      |
+| `calculate_retirement_projection` | Project retirement date using live FRED CPI + DGS10             |
+| `get_macro_data`                  | Fetch current CPI inflation rate and 10-year Treasury yield     |
+
+### New API routes
+
+| Operation       | Route                                    |
+| --------------- | ---------------------------------------- |
+| Create / Update | `POST /api/goals/retirement`             |
+| Read            | `GET /api/goals/retirement/{user_id}`    |
+| Delete          | `DELETE /api/goals/retirement/{user_id}` |
+
+Goals are stored in the `retirement_goals` Postgres table, created automatically at startup.
+
+### FRED data used
+
+| FRED Series | Name                  | Used for                                           |
+| ----------- | --------------------- | -------------------------------------------------- |
+| `CPIAUCSL`  | Consumer Price Index  | Year-over-year inflation (real return calculation) |
+| `DGS10`     | 10-Year Treasury Rate | Risk-free rate context for SWR                     |
+
+> **Zero impact when disabled:** When `FIRE_TRACKER_ENABLED=false` (default), no tools are
+> registered, no DB tables are created, and no FRED calls are made. Existing deployments are
+> completely unaffected.
 
 ---
 
