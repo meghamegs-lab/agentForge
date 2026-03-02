@@ -22,7 +22,7 @@ by integrating with [Ghostfolio](https://ghostfol.io), the open-source wealth ma
 
 ---
 
-## Fortio Agent exists under apps/agent folder
+## Fortio Agent exists under apps/agent folder https://github.com/meghamegs-lab/agentForge/tree/main/apps/agent
 
 ---
 
