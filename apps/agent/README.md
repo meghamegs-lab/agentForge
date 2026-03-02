@@ -81,7 +81,7 @@ pytest tests/unit/ -v
 
 pytest tests/evals/ -v
 \`\`\`
-
+Eval Data Set -->[ https://github.com/meghamegs-lab/agentForge/tree/main/apps/agent/tests/evals/](https://github.com/meghamegs-lab/agentForge/blob/main/apps/agent/tests/evals/eval_suite.json)
 ---
 
 ## CLI — Command Line Interface
