@@ -12,9 +12,13 @@ Strategy:
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+# Fake DB URL used to bypass the `if not settings.database_url` guard in all tools.
+_FAKE_DB_URL = "postgresql+asyncpg://test:test@localhost/testdb"
 
 from agent.tools.retirement import (
     _calculate_retirement_projection,
@@ -50,14 +54,34 @@ SAMPLE_HOLDINGS = {
 }
 
 
+@contextmanager
 def _patch_db_get(return_value):
-    """Patch agent.db.retirement.get_goal to return a fixed value."""
-    return patch("agent.tools.retirement.get_goal", new_callable=AsyncMock, return_value=return_value)
+    """Patch get_goal AND settings.database_url so the early-exit guard doesn't fire."""
+    with (
+        patch("agent.tools.retirement.settings") as mock_settings,
+        patch(
+            "agent.tools.retirement.get_goal",
+            new_callable=AsyncMock,
+            return_value=return_value,
+        ),
+    ):
+        mock_settings.database_url = _FAKE_DB_URL
+        yield
 
 
+@contextmanager
 def _patch_db_upsert(return_value):
-    """Patch agent.db.retirement.upsert_goal to return a fixed value."""
-    return patch("agent.tools.retirement.upsert_goal", new_callable=AsyncMock, return_value=return_value)
+    """Patch upsert_goal AND settings.database_url so the early-exit guard doesn't fire."""
+    with (
+        patch("agent.tools.retirement.settings") as mock_settings,
+        patch(
+            "agent.tools.retirement.upsert_goal",
+            new_callable=AsyncMock,
+            return_value=return_value,
+        ),
+    ):
+        mock_settings.database_url = _FAKE_DB_URL
+        yield
 
 
 def _patch_ghostfolio(holdings=None):
@@ -126,11 +150,15 @@ class TestGetRetirementGoal:
         assert "Database" in result["error"]
 
     async def test_db_exception_returns_structured_error(self):
-        with patch(
-            "agent.tools.retirement.get_goal",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("connection refused"),
+        with (
+            patch("agent.tools.retirement.settings") as mock_settings,
+            patch(
+                "agent.tools.retirement.get_goal",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("connection refused"),
+            ),
         ):
+            mock_settings.database_url = _FAKE_DB_URL
             result = await _get_retirement_goal("test-user")
         assert result["status"] == "error"
         assert "connection refused" in result["error"]
